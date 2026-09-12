@@ -3,7 +3,7 @@
 # 文档：https://github.com/Fission-AI/OpenSpec
 
 project:
-  name: ekb
+  name: ragagent
   description: 企业知识库与智能问答系统（FastAPI + React + MinerU + DashScope + Milvus）
 
 # 工作流配置：default | expanded

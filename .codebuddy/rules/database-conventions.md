@@ -66,6 +66,6 @@ trigger: always_on
 
 ## 环境
 
-- 开发/测试库：`ekb_dev` / `ekb_test`
+- 开发/测试库：`ragagent` / `ragagent_test`（由环境变量 `MYSQL_DATABASE` / `MYSQL_TEST_DATABASE` 指定）
 - 测试使用独立 database，跑完不残留（或用事务回滚）
 - 禁止在测试中连开发库

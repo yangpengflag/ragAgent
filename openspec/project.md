@@ -6,7 +6,7 @@
 
 **EKB — 企业知识库与智能问答系统**（Enterprise Knowledge Base）
 
-> ⚠️ 命名待最终确认。当前全仓以 `ekb` 作为代码包名、MySQL 库名、Milvus database 名。改名成本为全局字符串替换，低。
+> ⚠️ 产品名待最终确认。**资源命名前缀统一为 `ragagent`**：MySQL 库 `ragagent` / `ragagent_test`、Milvus database `ragagent`、对象存储 bucket `ragagent`。改名成本为全局字符串替换，低。
 
 ## 愿景
 
@@ -70,7 +70,7 @@ EKB 把这些文档解析、切分、向量化后建成可检索的知识库，�
 | 代码质量 | ruff + mypy | CI 门禁 |
 | 关系库 | MySQL 8 | 元数据 + chunk 正文 |
 | 缓存 / 队列 | Redis | broker + 缓存 + 限流 |
-| 向量库 | Milvus 2.5.10 Standalone | 本地 Docker；**项目级用 database 隔离**（`ekb`），**KB 级用 partition_key 隔离** |
+| 向量库 | Milvus 2.5.10 Standalone | 本地 Docker；**项目级用 database 隔离**（`ragagent`），**KB 级用 partition_key 隔离** |
 | 文档解析 | MinerU | 默认云 API v4（`model_version=vlm`）；可切本地 `mineru-api`。两者输出均为 `content_list.json` |
 | 生成模型 | DashScope `qwen-plus` | OpenAI 兼容模式 |
 | 向量模型 | DashScope `qwen3.7-text-embedding` | **1024 维**；批量 20 条/次；单行 128k token。入库 `text_type=document`，查询 `text_type=query` |
@@ -110,6 +110,20 @@ backend/app/
 ```
 
 **铁律**：`domain/` 不 import FastAPI / SQLAlchemy / SDK。切分器是纯函数（输入 `list[Block]` → 输出 `list[Chunk]`），单测毫秒级，是全仓 TDD 的主战场。
+
+### 前端分层
+
+```
+frontend/src/
+├─ app/                 路由表 + 布局壳 + 路由守卫
+├─ features/<domain>/   按业务域组织：components/ hooks/ api.ts
+├─ components/ui/       shadcn/ui 基础组件（不手改）
+├─ components/          跨域共享组件
+├─ lib/                 api client / utils / constants
+└─ types/               共享类型
+```
+
+**目录约定（MUST）**：后端代码一律在 `backend/`，前端代码一律在 `frontend/`，仓库根不放源码。
 
 ## 已定稿的核心设计
 

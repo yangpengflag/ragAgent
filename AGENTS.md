@@ -74,6 +74,8 @@ ekb/                          ← 单一 git 仓库
 └─ AGENTS.md
 ```
 
+> **目录约定（MUST）**：后端代码一律放 `backend/`，前端代码一律放 `frontend/`；仓库根**不放任何源码**，只放 `openspec/`、各 IDE harness 目录、`.env.example`、`AGENTS.md`、`.python-version`、`.gitignore` 等协作与配置文件。
+
 ### `backend/` — Python 后端
 
 - **技术栈**：Python 3.12 + FastAPI + SQLAlchemy 2.0 + Alembic + Celery
