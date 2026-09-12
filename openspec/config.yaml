@@ -1,0 +1,29 @@
+# OpenSpec 配置
+# 规格驱动开发 (SDD) - AI 编码
+# 文档：https://github.com/Fission-AI/OpenSpec
+
+project:
+  name: ekb
+  description: 企业知识库与智能问答系统（FastAPI + React + MinerU + DashScope + Milvus）
+
+# 工作流配置：default | expanded
+# default: /opsx:explore → /opsx:propose → /opsx:apply → /opsx:archive
+# expanded: 额外包含 /opsx:new, /opsx:continue, /opsx:ff, /opsx:verify, /opsx:bulk-archive, /opsx:onboard
+profile: default
+
+# 工作流 schema - OpenSpec 1.8 顶层字符串键，指定变更工作流
+# 可选值：spec-driven（默认）| expanded 等
+schema: spec-driven
+
+# 遥测
+telemetry:
+  enabled: false
+
+# 制品配置
+artifacts:
+  # 规格存放位置（真相来源）
+  specs_dir: openspec/specs
+  # 进行中的变更存放位置
+  changes_dir: openspec/changes
+  # 已归档变更存放位置
+  archive_dir: openspec/changes/archive
