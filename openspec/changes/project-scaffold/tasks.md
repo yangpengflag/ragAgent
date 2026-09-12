@@ -1,46 +1,46 @@
 ## 0. 环境准备（一次性基建）
 
-- [ ] 0.1 复制 `.env.example` 为仓库根 `.env`，按本机填写（`MYSQL_PASSWORD`、`APP_SECRET_KEY` 等），并确认 `.env` 已被 `.gitignore` 忽略
-- [ ] 0.2 创建 MySQL 库 `ragagent`（开发）与 `ragagent_test`（测试），不存在则创建
-- [ ] 0.3 幂等创建 Milvus database `ragagent`，验证 `list_databases()` 中包含 `ragagent`
-- [ ] 0.4 确认三个中间件可用：`mysql8` 服务 Running、Redis 容器 6379、Milvus standalone healthy（异常时用 `docker compose up -d --force-recreate standalone` 修复）
-- [ ] 0.5 验证 uv 环境落在 D 盘：`uv cache dir` 输出以 `D:` 开头，且安装前后记录 C 盘剩余空间
+- [x] 0.1 复制 `.env.example` 为仓库根 `.env`，按本机填写（`MYSQL_PASSWORD`、`APP_SECRET_KEY` 等），并确认 `.env` 已被 `.gitignore` 忽略
+- [x] 0.2 创建 MySQL 库 `ragagent`（开发）与 `ragagent_test`（测试），不存在则创建
+- [x] 0.3 幂等创建 Milvus database `ragagent`，验证 `list_databases()` 中包含 `ragagent`
+- [x] 0.4 确认三个中间件可用：`mysql8` 服务 Running、Redis 容器 6379、Milvus standalone healthy（异常时用 `docker compose up -d --force-recreate standalone` 修复）
+- [x] 0.5 验证 uv 环境落在 D 盘：`uv cache dir` 输出以 `D:` 开头，且安装前后记录 C 盘剩余空间
 
 ## 1. 工程初始化与测试基建
 
-- [ ] 1.1 创建 `backend/` 目录：`app/{api/v1,core,models,integrations}`、`tests/`、`alembic/`，每个包带 `__init__.py`（其余包目录由各自 change 创建）
-- [ ] 1.2 编写 `pyproject.toml`：依赖含 **httpx**（`TestClient` 硬依赖）；设置 `[tool.uv] package = false`；配置 ruff 规则集 `E,F,I,UP,B,SIM` 与 mypy overrides（`pymysql/pymilvus/alembic` 忽略缺 stub；`app.domain.*` 开 strict）
-- [ ] 1.3 用 `uv` 创建虚拟环境并生成 `uv.lock`；验证 `.venv/pyvenv.cfg` 的 `home` 指向 `D:\Programs\uv-python`
-- [ ] 1.4 配置 `pytest`（asyncio 模式、测试路径）与 `tests/conftest.py` 骨架
-- [ ] 1.5 红灯：写测试——`create_app()` 返回 FastAPI 实例，`/openapi.json` 可访问，未知路径返回统一 404 错误信封
-- [ ] 1.6 绿灯：实现最小 `create_app()`（无路由、中间件与异常处理器挂载点留空）
-- [ ] 1.7 红灯：写测试——conftest 提供配置隔离 fixture（`Settings(_env_file=None)` + `monkeypatch.delenv`），断言测试不会读到仓库根 `.env`
-- [ ] 1.8 绿灯：实现 conftest 通用 fixture（配置隔离、临时库命名）
-- [ ] 1.9 编写 `backend/README.md` 骨架（目录说明与命令占位，内容在 7.8 补全）
+- [x] 1.1 创建 `backend/` 目录：`app/{api/v1,core,models,integrations}`、`tests/`、`alembic/`，每个包带 `__init__.py`（其余包目录由各自 change 创建）
+- [x] 1.2 编写 `pyproject.toml`：依赖含 **httpx**（`TestClient` 硬依赖）；设置 `[tool.uv] package = false`；配置 ruff 规则集 `E,F,I,UP,B,SIM` 与 mypy overrides（`pymysql/pymilvus/alembic` 忽略缺 stub；`app.domain.*` 开 strict）
+- [x] 1.3 用 `uv` 创建虚拟环境并生成 `uv.lock`；验证 `.venv/pyvenv.cfg` 的 `home` 指向 `D:\Programs\uv-python`
+- [x] 1.4 配置 `pytest`（asyncio 模式、测试路径）与 `tests/conftest.py` 骨架
+- [x] 1.5 红灯：写测试——`create_app()` 返回 FastAPI 实例，`/openapi.json` 可访问，未知路径返回 404（错误信封的断言由 §4 覆盖）
+- [x] 1.6 绿灯：实现最小 `create_app()`（无业务路由，中间件与异常处理器挂载点留空）
+- [x] 1.7 红灯：写测试——conftest 提供配置隔离 fixture（`Settings(_env_file=None)` + `monkeypatch.delenv`），断言测试不会读到仓库根 `.env`
+- [x] 1.8 绿灯：实现 conftest 通用 fixture（配置隔离、临时库命名）
+- [x] 1.9 编写 `backend/README.md` 骨架（目录说明与命令占位，内容在 7.8 补全）
 
 > **约束**：§3 与 §4 的所有红灯统一使用 `TestClient(create_app())`，不得自建临时 app，避免两套装配并存。
 
 ## 2. 配置层
 
-- [ ] 2.1 红灯：写测试——缺少 `MYSQL_HOST` 时构造 Settings 抛出异常，且错误信息与日志中均包含 `MYSQL_HOST` 字样
-- [ ] 2.2 绿灯：实现 `core/config.py` 的 Settings（Pydantic BaseSettings，`lru_cache` 缓存）
-- [ ] 2.3 红灯：写测试——通过 `create_app()` 启动且缺少 `MYSQL_HOST` 时启动失败，不会进入可服务状态
-- [ ] 2.4 绿灯：`create_app()` 首行实例化 Settings
-- [ ] 2.5 红灯：写测试——数值型配置被正确转换；可选配置缺失时使用默认值；密码类配置为空串时被归一化为未设置
-- [ ] 2.6 绿灯：补全默认值、类型转换与空串归一化逻辑
-- [ ] 2.7 重构：`.env` 路径以 `Path(__file__).resolve().parents[2]` 定位仓库根；配置分组为 app / mysql / redis / milvus / logging / health；同步 `.env.example`
+- [x] 2.1 红灯：写测试——缺少 `MYSQL_HOST` 时构造 Settings 抛出异常，且错误信息与日志中均包含 `MYSQL_HOST` 字样
+- [x] 2.2 绿灯：实现 `core/config.py` 的 Settings（Pydantic BaseSettings，`lru_cache` 缓存）
+- [x] 2.3 红灯：写测试——通过 `create_app()` 启动且缺少 `MYSQL_HOST` 时启动失败，不会进入可服务状态
+- [x] 2.4 绿灯：`create_app()` 首行实例化 Settings
+- [x] 2.5 红灯：写测试——数值型配置被正确转换；可选配置缺失时使用默认值；密码类配置为空串时被归一化为未设置
+- [x] 2.6 绿灯：补全默认值、类型转换与空串归一化逻辑
+- [x] 2.7 重构：`.env` 路径以 `Path(__file__).resolve().parents[3]` 定位仓库根（并加断言仓库根定位正确的测试）；配置分组为 app / mysql / redis / milvus / logging / health；同步 `.env.example`
 
 ## 3. 结构化日志与 request_id
 
-- [ ] 3.1 红灯：写测试——日志输出为可解析 JSON，包含时间戳、级别、消息字段
-- [ ] 3.2 绿灯：实现 `core/logging.py`（structlog JSON renderer）
-- [ ] 3.3 红灯：写测试——未携带 `X-Request-ID` 时响应头与响应体均含非空 `request_id`；携带时沿用；请求头名大小写不敏感
-- [ ] 3.4 绿灯：实现 `request_id` 中间件（生成/沿用 + contextvar 绑定 + 响应头与响应体双写）
-- [ ] 3.5 红灯：写测试——该请求产生的日志条目自动携带同一个 `request_id`
-- [ ] 3.6 绿灯：日志处理器集成 contextvar 注入
-- [ ] 3.7 红灯：写测试——日志中出现 token/password/secret/api_key 类字段时其值被脱敏
-- [ ] 3.8 绿灯：实现敏感字段过滤
-- [ ] 3.9 重构：收敛日志与中间件配置到 `core/`，路由层无日志样板代码
+- [x] 3.1 红灯：写测试——日志输出为可解析 JSON，包含时间戳、级别、消息字段
+- [x] 3.2 绿灯：实现 `core/logging.py`（structlog JSON renderer）
+- [x] 3.3 红灯：写测试——未携带 `X-Request-ID` 时响应头与响应体均含非空 `request_id`；携带时沿用；请求头名大小写不敏感
+- [x] 3.4 绿灯：实现 `request_id` 中间件（生成/沿用 + contextvar 绑定 + 响应头与响应体双写）
+- [x] 3.5 红灯：写测试——该请求产生的日志条目自动携带同一个 `request_id`
+- [x] 3.6 绿灯：日志处理器集成 contextvar 注入
+- [x] 3.7 红灯：写测试——日志中出现 token/password/secret/api_key 类字段时其值被脱敏
+- [x] 3.8 绿灯：实现敏感字段过滤
+- [x] 3.9 重构：收敛日志与中间件配置到 `core/`，路由层无日志样板代码
 
 ## 4. 统一错误信封
 
@@ -51,6 +51,7 @@
 - [ ] 4.5 红灯：写测试——未预期异常返回 500、`error_code` 为 `internal_error`、响应不含堆栈
 - [ ] 4.6 绿灯：注册通用 `Exception` 处理器，堆栈只写日志
 - [ ] 4.7 重构：只抽取实际用到的三个错误码常量，移除测试路由或收敛到测试专用 app
+- [ ] 4.8 回归：确保**未处理异常**的响应也带 `X-Request-ID` 响应头（当前 `RequestIdMiddleware` 仅在正常路径写回，异常由外层 `ServerErrorMiddleware` 生成 500，会丢失该头）
 
 ## 5. 数据库骨架与迁移
 

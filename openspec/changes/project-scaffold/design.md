@@ -52,9 +52,10 @@
 
 配套约定：
 
-- **`.env` 路径解析**：以 `Path(__file__).resolve().parents[2] / ".env"` 定位仓库根，避免 cwd 在 `backend/` 时静默读不到
+- **`.env` 路径解析**：以 `Path(__file__).resolve().parents[3] / ".env"` 定位仓库根（`config.py` 位于 `backend/app/core/`，parents 依次为 `core` / `app` / `backend` / 仓库根），避免 cwd 在 `backend/` 时静默读不到；配套测试需断言仓库根定位正确
 - **空串归一化**：密码/令牌类配置（`MYSQL_PASSWORD`、`REDIS_PASSWORD`、`MILVUS_TOKEN`）空串一律归一化为"未设置"，避免 `redis.Redis(password="")` 触发 AUTH 空密码失败
-- **必填项范围**：本 change 仅 `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_USER` / `MYSQL_DATABASE` / `APP_SECRET_KEY` 为必填；DashScope 等留空不影响启动
+- **必填项范围**：本 change 仅 `MYSQL_HOST` / `MYSQL_USER` / `MYSQL_DATABASE` / `APP_SECRET_KEY` 为必填（`MYSQL_PORT` 带默认值 3306）；DashScope 等留空不影响启动
+- **获取方式**：`create_app()` 使用**非缓存**的 `load_settings()`（启动期只解析一次，缓存无收益，且避免测试间相互污染）；`get_settings()` 供运行期复用，测试 fixture 中需 `cache_clear()`
 - **测试隔离**：fixture 以 `Settings(_env_file=None)` 构造，配合 `monkeypatch.delenv`，确保不受仓库根 `.env` 影响
 
 **备选**：分散在各模块 `os.getenv` —— 无法统一校验、无法在启动时暴露缺失项、类型靠手工转换。
