@@ -140,9 +140,16 @@
 
 ### D13. 数据模型与迁移
 
-**选择**：新增 `users` 表，沿用 `BaseModel` 的公共字段；迁移建表 + **部分唯一索引** + `deleted_at` 索引，无数据迁移。回滚即 `drop table`。
+**选择**：新增 `users` 表，沿用 `BaseModel` 的公共字段；迁移建表 + 唯一约束（兼容软删，见下） + `deleted_at` 索引，无数据迁移。回滚即 `drop table`。
 
-**唯一性**：`username` 唯一性由**数据库约束**保证（并发创建同名账号时靠约束而非"先查后插"），业务层把约束冲突转换为 409。由于账号是软删，唯一索引 MUST 写成**部分唯一索引**（`WHERE deleted_at IS NULL`），否则软删掉 `zhangsan` 之后同名账号永远无法重建（用户会看到 409 却在列表里找不到这个名字，无法自解释）。该要求来自 `notes/scaffold/residual-risks.md` 第 5 条。
+**唯一性**：`username` 唯一性由**数据库约束**保证（并发创建同名账号时靠约束而非"先查后插"），业务层把约束冲突转换为 409。由于账号是软删，唯一约束 MUST 只作用于**未软删行**，否则软删掉 `zhangsan` 之后同名账号永远无法重建（用户会看到 409 却在列表里找不到这个名字，无法自解释）。该要求来自 `notes/scaffold/residual-risks.md` 第 5 条。
+
+**实施形式（§3 落地后修订）**：SQLite / Postgres 原生支持部分索引（`CREATE UNIQUE INDEX ... WHERE deleted_at IS NULL`），但 **MySQL 不支持带 WHERE 的部分索引**。因此实现统一采用**虚拟生成列 + 唯一索引**的等价方案，两库行为一致：
+
+- 生成列 `username_active = CASE WHEN deleted_at IS NULL THEN username ELSE NULL END`
+- 唯一索引 `uk_users_username_active (username_active)`——活跃行唯一；软删行该列为 NULL，唯一索引允许多个 NULL
+
+已由 SQLite 单测（同名冲突 / 软删后重建）+ MySQL 集成测试（`information_schema` 校验生成列与唯一索引属性 + 同名软删重建全链路）双重锁定。见 `backend/app/models/user.py` 与迁移 `c4f1b8d29e57`。
 
 ### D14. 会话即时失效用「会话纪元」，而不是枚举撤销
 
@@ -213,7 +220,7 @@
 
 1. 配置项、依赖与规格同步（含 `project.md` 的技术栈新增、角色模型两层化、capability 粒度约定放宽）
 2. **地基补足**：软删全局过滤与幂等 `soft_delete()`、统一响应模型、`api/v1` 路由聚合器（含把 `health` 迁入）
-3. `Account` 模型 + Alembic 迁移（含部分唯一索引）
+3. `Account` 模型 + Alembic 迁移（含兼容软删的唯一约束）
 4. 密码与令牌原语（纯函数，可单测）
 5. 认证服务（登录、刷新、登出、会话纪元、限流、初始管理员引导；依赖全部走可注入端口）
 6. 鉴权依赖 + `auth` / `users` 路由（401 / 403 / 404 / 409 / 422 / 429 / 503）

@@ -46,7 +46,7 @@
 
 仍待处理：
 
-- ⏳ **唯一约束兼容软删**：`users` 表的 `username` 用**部分唯一索引**（`WHERE deleted_at IS NULL`）——`auth-and-users` §3 迁移中落地；后续每个带业务唯一键的表都要照此办理
+- ✅ **唯一约束兼容软删**（`auth-and-users` §3 落地）：MySQL 不支持部分索引（`WHERE deleted_at IS NULL`），改用等价方案——虚拟生成列 `username_active = CASE WHEN deleted_at IS NULL THEN username ELSE NULL END` + 唯一索引 `uk_users_username_active`（软删行该列为 NULL，唯一索引允许多个 NULL）；SQLite 单测与 MySQL 集成测试（`information_schema` 校验 + 同名软删重建全链路）双重锁定。**后续每个带业务唯一键的表照此办理**
 - ⏳ **`soft_delete()` 不 flush/commit、不级联清 Milvus 向量** —— 文档类实体的删除编排（清向量 + 对账）随文档能力引入
 - ❌ **`restore()`**：本期明确不做（仅启用/停用），软删记录仅用于审计追溯
 

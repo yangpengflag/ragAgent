@@ -38,6 +38,12 @@
     > fast-path 跳过 options 传播）。改为直接 `state.statement.where(deleted_at IS NULL)`
     > 同时覆盖 `select()` 与 `Session.get()`；后者在软删行上抛 `ObjectDeletedError`
     > （对调用方语义更明确：PK 已不存在）。
+    >
+    > **其他偏离（评审后补记，原 commit 已 push 不做 amend）**：① 同 commit 顺手给
+    > `Base.metadata` 加了 SQLAlchemy 命名约定（`idx_/uk_/ck_/fk_/pk_`），落实
+    > `database-conventions.md` 的既有命名规则，非新增约定；② 评审发现的文档同步
+    > （`design.md` D13 实施形式修订、`residual-risks.md` 第 5 条标 ✅）落在后续
+    > docs commit 中。
 
 ## 4. 密码与令牌原语（纯函数，零 I/O）
 
