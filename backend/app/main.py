@@ -15,12 +15,13 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 
 from app.api.v1.router import api_router
-from app.core.config import Settings, load_settings
+from app.core.config import Settings, get_settings, load_settings
 from app.core.db import get_engine
 from app.core.error_handlers import register_exception_handlers
 from app.core.exceptions import ErrorCode, InvalidConfigurationError
 from app.core.logging import configure_logging, get_logger
 from app.core.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
+from app.integrations.tracing import apply_tracing_config
 
 _logger = get_logger()
 
@@ -30,6 +31,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """启动/关闭时释放资源与记录日志。"""
     logger = _logger
     logger.info("application starting")
+    # 观测开关的最终状态：放在 lifespan（应用启动语义）而非 create_app，
+    # 避免"无请求上下文的日志"混入按请求断言的用例
+    logger.info(
+        "observability configured",
+        tracing=get_settings().obs_tracing_effective,
+    )
     _bootstrap_initial_admin()
     try:
         yield
@@ -134,6 +141,9 @@ def create_app() -> FastAPI:
     """创建并返回一个 FastAPI 应用实例。"""
     settings: Settings = load_settings()  # 启动期 fail-fast
     configure_logging(settings.log_level)
+    # 观测开关必须在请求进入前就位（LangSmith SDK 以环境变量为唯一来源）：
+    # 配置齐全才启用，否则强制关闭并清除目标与凭证，避免误报出网
+    apply_tracing_config(settings)
 
     # 注意：不传 debug=app_debug。Starlette 在 debug=True 时会用 traceback 响应
     # 绕过自定义异常处理器，既泄漏堆栈也丢失 X-Request-ID（违反统一错误信封约定）。
