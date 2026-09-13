@@ -1,6 +1,6 @@
 import { LogOut, Menu } from "lucide-react";
 import { useEffect } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { NAV_ITEMS, findNavItem } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import { useUiStore } from "@/store/ui";
  */
 export function AppLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const navOpen = useUiStore((state) => state.navOpen);
   const setNavOpen = useUiStore((state) => state.setNavOpen);
   const account = useSessionStore((state) => state.user);
@@ -78,7 +79,13 @@ export function AppLayout() {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => void performLogout()}
+                  onClick={() => {
+                    // 显式跳转：登出后若停留在公开页（`/` 无守卫），
+                    // 没有任何守卫会重新求值，必须自己把用户送去登录页
+                    void performLogout().then(() => {
+                      navigate("/login", { replace: true });
+                    });
+                  }}
                 >
                   <LogOut aria-hidden="true" />
                   登出

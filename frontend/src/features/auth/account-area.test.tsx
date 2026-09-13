@@ -63,6 +63,18 @@ describe("外壳账号区与登出", () => {
     expect(useSessionStore.getState().status).toBe("anonymous");
   });
 
+  it("在公开页登出同样回到登录页（无守卫可依赖，必须显式跳转）", async () => {
+    authenticatedSession();
+    server.use(logoutHandler);
+    const user = userEvent.setup();
+    await renderApp("/");
+
+    await screen.findByText("admin");
+    await user.click(screen.getByRole("button", { name: "登出" }));
+
+    expect(await screen.findByText("登录 EKB")).toBeInTheDocument();
+  });
+
   it("服务端登出失败（500）本地仍完成登出", async () => {
     authenticatedSession();
     server.use(logoutFailureHandler(500, "撤销失败"));

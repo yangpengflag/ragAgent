@@ -93,6 +93,7 @@ ekb/                          ← 单一 git 仓库
 - **质量**：`npm run lint` + `npm run typecheck` + `npm run build`
 - **目录**：`src/{app,components/ui,components,features,lib,store,types}`；测试文件与被测源码同目录（`Xxx.test.tsx`），共享测试基建在 `tests/`
 - **请求层**：所有请求经 `src/lib/api/client.ts`（基址、Bearer 注入、401 刷新重放、错误归一化为 `ApiError`），字段名与后端一致不做转换
+- **会话与守卫**：访问令牌只存内存（刷新令牌仅 `HttpOnly` Cookie）；启动引导 `refresh → me` 且并发去重；路由按公开（`/`、`/login`）与受保护（其余，包在 `RequireAuth` 下）分组。详见 `frontend/README.md` 的「会话与守卫约定」
 - **配置**：`frontend/.env` 的 `VITE_API_BASE_URL`（默认 `http://localhost:8000`；CORS 已放行 `http://localhost:5173`）
 - **编码规约**：`<harness>/rules/frontend-conventions.md`
 
