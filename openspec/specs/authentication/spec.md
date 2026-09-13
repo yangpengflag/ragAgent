@@ -76,6 +76,8 @@
 
 刷新 MUST 同时校验：签名有效、未过期、`jti` 未被撤销、**账号当前存在且启用**、且令牌签发时间不早于该账号的会话纪元（见「凭据变更或停用即时失效」）。任一项不满足 MUST 返回 401 并清除刷新令牌 Cookie；其中**令牌已过期**返回 `token_expired`（与访问令牌的过期语义一致，便于客户端识别），其余情形返回 `unauthorized`。
 
+刷新类失败的 `message` MUST 指代刷新令牌本身（如「刷新令牌无效或已失效，请重新登录」），MUST NOT 复用登录失败的文案——刷新场景不存在"用户名/密码"输入，复用会误导用户与排障。各失败分支 MUST 共用同一句文案：不向调用方区分"撤销 / 账号停用 / 纪元落后"等具体原因，诊断细节只进服务端日志。
+
 响应体字段名为：`request_id`、`access_token`、`token_type`、`expires_in`（MUST NOT 返回 `user`——账号信息由 `GET /api/v1/auth/me` 提供）。
 
 刷新请求 MUST 校验来源：当请求携带 `Origin`（缺失时取 `Referer`）且其不属于配置白名单时，MUST 返回 403 `access_denied`；两者均缺失时视为非浏览器客户端，放行交由刷新令牌校验决定结果。
@@ -109,6 +111,16 @@
 
 - **WHEN** 刷新请求携带的 `Origin`（或 `Referer`）不在配置的允许来源内
 - **THEN** 返回 403 且 `error_code` 为 `access_denied`，且不下发新的访问令牌
+
+#### Scenario: 刷新失败文案指代刷新令牌
+
+- **WHEN** 刷新因令牌缺失、签名非法、已被撤销、账号不可用或会话纪元落后而失败
+- **THEN** 响应 `error_code` 为 `unauthorized`，且 `message` 指代刷新令牌无效或失效，不出现「用户名或密码错误」这类登录文案
+
+#### Scenario: 刷新令牌过期仍用过期错误码
+
+- **WHEN** 携带已过期的刷新令牌调用刷新接口
+- **THEN** 返回 401 且 `error_code` 为 `token_expired`
 
 ### Requirement: 凭据变更或停用即时失效
 

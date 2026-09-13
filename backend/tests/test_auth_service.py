@@ -466,3 +466,86 @@ class TestStorageFailureModes:
                 sqlite_session, username="alice", password="wrong-password-1",
                 client_host="10.0.0.1",
             )
+
+class TestRefreshFailureMessage:
+    """刷新类失败的文案必须指代刷新令牌，不得复用登录文案。
+
+    对应 change：fix-refresh-token-error-message。
+    """
+
+    def test_missing_token_message_points_to_refresh_token(
+        self, service: AuthService, sqlite_session: Session
+    ) -> None:
+        with pytest.raises(InvalidCredentialsError) as exc_info:
+            service.refresh(sqlite_session, refresh_token=None)
+
+        assert exc_info.value.error_code == ErrorCode.UNAUTHORIZED
+        assert "刷新令牌" in exc_info.value.message
+        assert "用户名或密码" not in exc_info.value.message
+
+    def test_rotated_old_token_message_points_to_refresh_token(
+        self, service: AuthService, sqlite_session: Session, account: Account
+    ) -> None:
+        _, old_refresh = issue_tokens(service, sqlite_session, account)
+        service.refresh(sqlite_session, refresh_token=old_refresh)
+
+        with pytest.raises(InvalidCredentialsError) as exc_info:
+            service.refresh(sqlite_session, refresh_token=old_refresh)
+
+        assert "刷新令牌" in exc_info.value.message
+        assert "用户名或密码" not in exc_info.value.message
+
+    def test_epoch_mismatch_message_points_to_refresh_token(
+        self, service: AuthService, sqlite_session: Session, account: Account
+    ) -> None:
+        _, old_refresh = issue_tokens(service, sqlite_session, account)
+        account.session_epoch += 1
+        sqlite_session.commit()
+
+        with pytest.raises(InvalidCredentialsError) as exc_info:
+            service.refresh(sqlite_session, refresh_token=old_refresh)
+
+        assert "刷新令牌" in exc_info.value.message
+
+    def test_disabled_account_message_points_to_refresh_token(
+        self, service: AuthService, sqlite_session: Session, account: Account
+    ) -> None:
+        _, old_refresh = issue_tokens(service, sqlite_session, account)
+        account.is_active = False
+        sqlite_session.commit()
+
+        with pytest.raises(InvalidCredentialsError) as exc_info:
+            service.refresh(sqlite_session, refresh_token=old_refresh)
+
+        # 不向调用方区分"账号停用"与"令牌失效"，但文案仍指代刷新令牌
+        assert "刷新令牌" in exc_info.value.message
+
+    def test_login_failure_message_unchanged(
+        self, service: AuthService, sqlite_session: Session, account: Account
+    ) -> None:
+        """登录文案的"不区分账号是否存在"语义不变。"""
+        with pytest.raises(InvalidCredentialsError) as exc_info:
+            service.login(
+                sqlite_session, username="alice", password="wrong-password-1",
+                client_host="10.0.0.1",
+            )
+
+        assert exc_info.value.message == "用户名或密码错误"
+
+    def test_expired_refresh_token_keeps_token_expired_code(
+        self, service: AuthService, sqlite_session: Session, account: Account
+    ) -> None:
+        from datetime import UTC, datetime, timedelta
+
+        expired = create_refresh_token(
+            account_id=account.id,
+            session_epoch=account.session_epoch,
+            secret_key=SECRET,
+            algorithm="HS256",
+            expires_days=7,
+            now=datetime.now(UTC) - timedelta(days=8),
+        )
+        with pytest.raises(TokenExpiredError) as exc_info:
+            service.refresh(sqlite_session, refresh_token=expired)
+
+        assert exc_info.value.error_code == ErrorCode.TOKEN_EXPIRED

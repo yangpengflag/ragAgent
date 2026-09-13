@@ -32,6 +32,11 @@ logger = get_logger()
 # 统一失败文案：用户名不存在与密码错误对外不可区分（spec：不暴露账号是否存在）
 _INVALID_CREDENTIALS_MESSAGE: Final = "用户名或密码错误"
 
+# 刷新类失败的专属文案：刷新场景没有"用户名/密码"输入，
+# 复用登录文案会误导用户与排障。各分支共用同一句——不向调用方区分
+# 「已撤销 / 账号停用 / 纪元落后」等具体原因（细节只进服务端日志）。
+_INVALID_REFRESH_MESSAGE: Final = "刷新令牌无效或已失效，请重新登录"
+
 
 class InvalidCredentialsError(AppError):
     """凭据错误 / 刷新令牌无效。401 `unauthorized`。"""
@@ -228,7 +233,7 @@ class AuthService:
         cfg = self._config
         if not refresh_token:
             logger.warning("refresh rejected: no token", client=client_host)
-            raise InvalidCredentialsError(_INVALID_CREDENTIALS_MESSAGE)
+            raise InvalidCredentialsError(_INVALID_REFRESH_MESSAGE)
 
         try:
             claims = decode_token(
@@ -244,7 +249,7 @@ class AuthService:
             logger.warning(
                 "refresh rejected: invalid token", client=client_host
             )
-            raise InvalidCredentialsError(_INVALID_CREDENTIALS_MESSAGE) from exc
+            raise InvalidCredentialsError(_INVALID_REFRESH_MESSAGE) from exc
 
         # 撤销名单不可用 → 异常冒泡为 503（fail-closed，design D9）
         if self._revocations.is_revoked(claims.jti):
@@ -253,7 +258,7 @@ class AuthService:
                 account_id=str(claims.account_id),
                 client=client_host,
             )
-            raise InvalidCredentialsError(_INVALID_CREDENTIALS_MESSAGE)
+            raise InvalidCredentialsError(_INVALID_REFRESH_MESSAGE)
 
         # 全局软删过滤使已删账号查不到 → 与"不存在"同路拒绝。
         # 用 select 而非 session.get：后者命中 identity map 时会绕过过滤器。
@@ -266,7 +271,7 @@ class AuthService:
                 account_id=str(claims.account_id),
                 client=client_host,
             )
-            raise InvalidCredentialsError(_INVALID_CREDENTIALS_MESSAGE)
+            raise InvalidCredentialsError(_INVALID_REFRESH_MESSAGE)
 
         # 会话纪元（design D14）：重置密码/停用/软删/改角色都会 +1，
         # 旧令牌携带的 epoch 落后即失效。
@@ -276,7 +281,7 @@ class AuthService:
                 account_id=str(account.id),
                 client=client_host,
             )
-            raise InvalidCredentialsError(_INVALID_CREDENTIALS_MESSAGE)
+            raise InvalidCredentialsError(_INVALID_REFRESH_MESSAGE)
 
         # 轮换：拉黑旧 jti（TTL = 剩余寿命），签发新 jti。
         # 拉黑失败必须整体失败（design D4 的代价条款）——异常继续冒泡成 503。
