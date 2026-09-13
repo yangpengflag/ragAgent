@@ -81,7 +81,8 @@ src/
 遵循 `.codebuddy/rules/styling-conventions.md`：
 
 - Tailwind CSS 4（`src/styles.css` 中的 `@theme` 定义 Design Token），不写内联样式
-- shadcn/ui 基础组件位于 `src/components/ui/`，**不手工修改**；样式差异通过 `className` 覆盖
+- shadcn/ui 基础组件位于 `src/components/ui/`，**不定制样式、不加业务逻辑**；样式差异通过 `className` 覆盖
+- ⚠️ **新增 shadcn 组件时必须补 `forwardRef` + `displayName`**：本项目为 React 18，而现行 shadcn 源码按 React 19 的「`ref` 作为普通 prop」语义生成，不补会丢失 Radix 经 Portal / Slot 注入的 ref（`<TooltipTrigger asChild><Button/></TooltipTrigger>` 这类组合会静默失效）
 - 图标统一来自 `lucide-react`
 - 字体：Inter（正文）与 Plus Jakarta Sans（标题），经 `@fontsource` 在 `main.tsx` 引入
 - 禁止引入其它 UI 组件库与 CSS-in-JS（由 `tests/dependencies.test.ts` 守住）

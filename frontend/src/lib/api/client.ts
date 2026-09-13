@@ -57,12 +57,18 @@ export async function apiFetch<T>(
   }
 
   if (response.status === 401 && auth && replayOn401) {
-    const refreshed = await refreshAccessToken();
-    if (refreshed === null) {
-      notifyAuthFailure();
-      throw await toApiError(response);
+    // 若本次请求飞行期间令牌已被其他请求刷新过，直接重放即可，
+    // 不再触发第二次刷新（错峰 401 场景）。
+    const tokenWasRefreshed = getAccessToken() !== token;
+    if (!tokenWasRefreshed) {
+      const refreshed = await refreshAccessToken();
+      if (refreshed === null) {
+        notifyAuthFailure();
+        throw await toApiError(response);
+      }
     }
-    // 重放一次：失败不再重放，避免刷新→401→刷新 的死循环
+    // 释放未消费的 401 响应体，再重放一次（失败不再重放，避免死循环）
+    await discard(response);
     return apiFetch<T>(path, { ...options, replayOn401: false });
   }
 
@@ -107,19 +113,39 @@ function readString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-/** 服务端未给出 `error_code` 时的兜底（与后端语义保持一致） */
+async function discard(response: Response): Promise<void> {
+  try {
+    await response.text();
+  } catch {
+    // 仅为释放响应体，忽略任何读取失败
+  }
+}
+
+/**
+ * 服务端未给出 `error_code` 时的兜底。
+ *
+ * 与后端 `.codebuddy/rules/api-conventions.md` 的错误码表逐条对齐
+ * （后端 `error_handlers.py::_error_code_for_status` 是同一张表），
+ * 保证调用方按 `error_code` 分支时不会因来源不同而误判。
+ */
+const FALLBACK_ERROR_CODES: Record<number, string> = {
+  400: "bad_request",
+  401: "unauthorized",
+  403: "access_denied",
+  404: "not_found",
+  405: "method_not_allowed",
+  409: "conflict",
+  413: "file_too_large",
+  415: "unsupported_file_type",
+  422: "validation_error",
+  429: "rate_limited",
+  503: "upstream_unavailable",
+};
+
 function fallbackErrorCode(status: number): string {
-  if (status >= 500) {
-    return "internal_error";
+  const mapped = FALLBACK_ERROR_CODES[status];
+  if (mapped !== undefined) {
+    return mapped;
   }
-  if (status === 401) {
-    return "unauthorized";
-  }
-  if (status === 403) {
-    return "access_denied";
-  }
-  if (status === 404) {
-    return "not_found";
-  }
-  return "bad_request";
+  return status >= 500 ? "internal_error" : "bad_request";
 }

@@ -15,6 +15,8 @@ let accessToken: string | null = null;
 let refreshPromise: Promise<string | null> | null = null;
 let refresher: TokenRefresher | null = null;
 let authFailureHandler: AuthFailureHandler | null = null;
+/** 一次"刷新失败"只通知一次，直到刷新成功或会话重置 */
+let authFailureNotified = false;
 
 export function getAccessToken(): string | null {
   return accessToken;
@@ -22,6 +24,9 @@ export function getAccessToken(): string | null {
 
 export function setAccessToken(token: string | null): void {
   accessToken = token;
+  if (token) {
+    authFailureNotified = false;
+  }
 }
 
 export function setTokenRefresher(fn: TokenRefresher | null): void {
@@ -45,7 +50,13 @@ export function refreshAccessToken(): Promise<string | null> {
 async function runRefresher(): Promise<string | null> {
   try {
     const next = refresher ? await refresher() : null;
+    // 空串/undefined 一律视为刷新失败，避免发出 `Bearer ` 这类畸形请求头
+    if (!next) {
+      accessToken = null;
+      return null;
+    }
     accessToken = next;
+    authFailureNotified = false;
     return next;
   } catch {
     accessToken = null;
@@ -55,8 +66,17 @@ async function runRefresher(): Promise<string | null> {
   }
 }
 
-/** 刷新失败时通知上层（跳转登录） */
+/**
+ * 刷新失败时通知上层（跳转登录）。
+ *
+ * 幂等：并发请求同时因刷新失败而失败时，只通知一次——
+ * 否则真实的跳转/埋点/清理逻辑会被触发多次。
+ */
 export function notifyAuthFailure(): void {
+  if (authFailureNotified) {
+    return;
+  }
+  authFailureNotified = true;
   authFailureHandler?.();
 }
 
@@ -66,4 +86,5 @@ export function resetSession(): void {
   refreshPromise = null;
   refresher = null;
   authFailureHandler = null;
+  authFailureNotified = false;
 }

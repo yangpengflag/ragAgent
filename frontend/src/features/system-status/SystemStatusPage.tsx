@@ -12,6 +12,10 @@ import { cn } from "@/lib/utils";
 /**
  * 系统状态页：只做编排，展示细节在 `components/` 下的四个状态组件中。
  * 同时作为四态（Loading / Content / Empty / Error）的样板实现。
+ *
+ * 注：Empty 态是**前向兼容**分支——当前后端的健康接口恒定返回 mysql/redis/milvus
+ * 三个组件，故真实链路下不会触发（单测用合成的空响应覆盖）。保留它是为了
+ * 后端契约变化（例如未来按需返回组件、或返回体被网关裁剪）时不至于白屏。
  */
 export function SystemStatusPage() {
   const { data, isPending, isError, error, isFetching, refetch } = useHealth();

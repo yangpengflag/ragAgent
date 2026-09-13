@@ -31,7 +31,7 @@ describe("应用外壳", () => {
   });
 
   it("小屏下导航收起，点击入口后导航可见", async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const user = userEvent.setup();
     renderApp("/");
 
     expect(screen.queryByTestId("sidebar-drawer")).not.toBeInTheDocument();

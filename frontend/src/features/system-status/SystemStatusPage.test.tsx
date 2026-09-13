@@ -11,6 +11,7 @@ import {
   HEALTH_URL,
   healthDegradedHandler,
   healthEmptyHandler,
+  healthFailureHandler,
   healthOkHandler,
 } from "@tests/msw/handlers";
 import { server } from "@tests/msw/server";
@@ -84,16 +85,8 @@ describe("系统状态页", () => {
   it("请求失败（500）时展示错误描述与重试按钮，点击后重新发起请求", async () => {
     let requestCount = 0;
     server.use(
-      http.get(HEALTH_URL, () => {
+      healthFailureHandler(() => {
         requestCount += 1;
-        return HttpResponse.json(
-          {
-            request_id: "req-500",
-            error_code: "internal_error",
-            message: "数据库连接失败",
-          },
-          { status: 500 },
-        );
       }),
     );
 
