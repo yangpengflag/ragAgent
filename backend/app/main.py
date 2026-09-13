@@ -10,12 +10,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.requests import Request
 
 from app.api.v1.router import api_router
 from app.core.config import Settings, load_settings
 from app.core.db import get_engine
 from app.core.error_handlers import register_exception_handlers
-from app.core.exceptions import InvalidConfigurationError
+from app.core.exceptions import ErrorCode, InvalidConfigurationError
 from app.core.logging import configure_logging, get_logger
 from app.core.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
 
@@ -91,6 +94,42 @@ def _cors_origins(settings: Settings) -> list[str]:
     return origins
 
 
+class UnexpectedErrorMiddleware(BaseHTTPMiddleware):
+    """未处理异常的兜底：产出统一 500 信封（residual-risks 第 3 条）。
+
+    Starlette 的 ServerErrorMiddleware 位于所有中间件之外，它产出的 500
+    绕过 CORSMiddleware——浏览器因此读不到 500 的响应体，前端无法做统一
+    错误兜底。本中间件注册在 CORS **之前**（CORS 包在它外层），异常在
+    这里被转成普通 JSONResponse，向外穿过 CORS 时自动补上响应头。
+    """
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> JSONResponse:
+        try:
+            return await call_next(request)  # type: ignore[return-value]
+        except Exception as exc:
+            request_id = str(getattr(request.state, "request_id", "") or "")
+            get_logger().error(
+                "unhandled exception",
+                path=request.url.path,
+                request_id=request_id,
+                error=type(exc).__name__,
+                exc_info=exc,  # 堆栈只进日志，响应不含（既有契约，见 test_error_envelope）
+            )
+            response = JSONResponse(
+                status_code=500,
+                content={
+                    "request_id": request_id,
+                    "error_code": ErrorCode.INTERNAL_ERROR,
+                    "message": "Internal server error",
+                },
+            )
+            if request_id:
+                response.headers[REQUEST_ID_HEADER] = request_id
+            return response
+
+
 def create_app() -> FastAPI:
     """创建并返回一个 FastAPI 应用实例。"""
     settings: Settings = load_settings()  # 启动期 fail-fast
@@ -106,6 +145,10 @@ def create_app() -> FastAPI:
     )
 
     app.add_middleware(RequestIdMiddleware)
+    # 必须在 CORSMiddleware **之前**注册（CORS 因此包在它外层）：
+    # 兜底中间件把未处理异常转成普通 JSONResponse，向外穿过 CORS 时
+    # 才会被补上响应头——浏览器侧才能读到 500 的统一错误信封
+    app.add_middleware(UnexpectedErrorMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(settings),
@@ -132,7 +175,10 @@ def main() -> None:
     import uvicorn
 
     host, port = create_server_config()
-    uvicorn.run(create_app(), host=host, port=port)
+    # proxy_headers=False：uvicorn 默认信任来自 127.0.0.1 的 X-Forwarded-For
+    # 并改写 request.client——登录限流键会随之被伪造头污染（spec：本期无反向
+    # 代理，MUST 按对端连接地址计数）。将来上反代时再显式开启并配置可信网段。
+    uvicorn.run(create_app(), host=host, port=port, proxy_headers=False)
 
 
 if __name__ == "__main__":

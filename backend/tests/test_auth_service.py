@@ -173,7 +173,7 @@ class TestLogin:
                 sqlite_session, username="alice", password="wrong-password-1",
                 client_host="10.0.0.1",
             )
-        assert rate_limits.count("login-fail:alice:10.0.0.1") == 1
+        assert rate_limits.count("alice:10.0.0.1") == 1
 
     def test_success_resets_rate_counter(
         self, service: AuthService, sqlite_session: Session,
@@ -182,7 +182,7 @@ class TestLogin:
         service.login(
             sqlite_session, username="alice", password=PASSWORD, client_host="10.0.0.1"
         )
-        assert rate_limits.count("login-fail:alice:10.0.0.1") == 0
+        assert rate_limits.count("alice:10.0.0.1") == 0
 
 
 class TestRefresh:

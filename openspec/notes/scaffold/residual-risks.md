@@ -24,11 +24,14 @@
 
 新端点只需继承 `ApiResponse`；`tests/test_api_response.py` 守住了形状与一致性。
 
-## 3. 500 响应缺 CORS 头
+## 3. 500 响应缺 CORS 头 ✅ 已处理（`auth-and-users` §7.7）
 
-未处理异常由最外层的 `ServerErrorMiddleware` 直接产出响应，绕过 `CORSMiddleware`，
-浏览器侧读不到 500 的响应体。**首个前端联调前**需评估：
-考虑自定义外层中间件补 CORS 头，或接受该限制并在前端做通用错误兜底。
+Starlette 的 `ServerErrorMiddleware` 位于所有中间件之外，未处理异常产出的 500
+会绕过 `CORSMiddleware`，浏览器读不到错误体。已修复：`app/main.py` 新增
+`UnexpectedErrorMiddleware`（注册在 CORS **之前**，CORS 包在其外层），把未处理
+异常转成统一 500 信封，向外穿过 CORS 时自动补响应头。测试锁定：
+`tests/test_unexpected_error_cors.py`（500 信封 + CORS 头 + 无 Origin 不加头 +
+堆栈只进日志）。
 
 ## 4. WebSocket 无 request_id
 

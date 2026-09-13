@@ -133,7 +133,9 @@ class AuthService:
 
     # ---------------------------------------------------------------- 内部工具
     def _rate_key(self, username: str, client_host: str) -> str:
-        return f"login-fail:{username.lower().strip()}:{client_host}"
+        # 前缀由存储层统一加（Redis 键 `auth:login-fail:<key>`），
+        # 这里不再拼 "login-fail:"——否则真实 Redis 键会出现双前缀
+        return f"{username.lower().strip()}:{client_host}"
 
     def _window_seconds(self) -> int:
         return self._config.login_window_min * 60

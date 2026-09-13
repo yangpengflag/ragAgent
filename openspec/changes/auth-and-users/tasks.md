@@ -154,12 +154,31 @@
 
 ## 7. 真实 HTTP 联调与收尾
 
-- [ ] 7.1 配置初始管理员并启动：确认自动创建（日志只含用户名）；确认 `/api/v1/health` 仍匿名可访问且响应形状未变
-- [ ] 7.2 真实登录：确认响应字段完整、刷新 Cookie 为 `HttpOnly` 且 `Path=/api/v1/auth`、响应体不含刷新令牌
-- [ ] 7.3 用访问令牌调 `/auth/me`；再用刷新 Cookie 刷新（确认轮换、响应无 `user`、旧刷新令牌失效）
-- [ ] 7.4 登出（确认服务端从 Cookie 读到令牌、刷新令牌立即失效、重复登出幂等）；确认其他会话不受影响
-- [ ] 7.5 重置密码后确认既有刷新令牌失效；停用后确认刷新与 `/me` 均 401
-- [ ] 7.6 连续失败登录达阈值确认 429（窗口内凭据正确同样 429）；缩短窗口后确认恢复；带伪造 `X-Forwarded-For` 确认计数不受影响
-- [ ] 7.7 评估 500 响应缺 CORS 头（`notes/scaffold/residual-risks.md` 第 3 条）并给出结论：修复或记录为已知限制（供前端做通用错误兜底）
-- [ ] 7.8 复查：错误码与 `api-conventions.md` 一致；日志中无密码与令牌原文；`pytest` / `ruff` / `mypy` 全绿
-- [ ] 7.9 更新 `AGENTS.md`、`.env.example` 与 `notes/scaffold/residual-risks.md`（标记第 2、5 条已处理），提交变更
+- [x] 7.1 配置初始管理员并启动：确认自动创建（日志只含用户名）；确认 `/api/v1/health` 仍匿名可访问且响应形状未变
+- [x] 7.2 真实登录：确认响应字段完整、刷新 Cookie 为 `HttpOnly` 且 `Path=/api/v1/auth`、响应体不含刷新令牌
+- [x] 7.3 用访问令牌调 `/auth/me`；再用刷新 Cookie 刷新（确认轮换、响应无 `user`、旧刷新令牌失效）
+- [x] 7.4 登出（确认服务端从 Cookie 读到令牌、刷新令牌立即失效、重复登出幂等）；确认其他会话不受影响
+- [x] 7.5 重置密码后确认既有刷新令牌失效；停用后确认刷新与 `/me` 均 401
+- [x] 7.6 连续失败登录达阈值确认 429（窗口内凭据正确同样 429）；缩短窗口后确认恢复；带伪造 `X-Forwarded-For` 确认计数不受影响
+
+    > 联调脚本：`backend/scripts/e2e_flow.py`（37 项断言全 PASS，真实 MySQL +
+    > Redis + uvicorn）。联调发现并修复一个真实 bug：**uvicorn 默认信任来自
+    > 127.0.0.1 的 `X-Forwarded-For` 并改写 `request.client`**，伪造头会污染限流
+    > 键（spec 明确 MUST NOT）——已在 `main()` 显式 `proxy_headers=False`。
+    > 窗口恢复（15 分钟自然过期）由 Redis TTL 保证 + 服务层注入时钟单测覆盖，
+    > 真实环境不等待 15 分钟。
+- [x] 7.7 评估 500 响应缺 CORS 头（`notes/scaffold/residual-risks.md` 第 3 条）并给出结论：修复或记录为已知限制（供前端做通用错误兜底）
+
+    > **结论：修复**。新增 `UnexpectedErrorMiddleware`（注册在 CORS 之前、CORS
+    > 包其外层），未处理异常转为统一 500 信封，向外穿过 CORS 补头；
+    > `residual-risks.md` 第 3 条标记已处理，测试锁定于
+    > `tests/test_unexpected_error_cors.py`。
+- [x] 7.8 复查：错误码与 `api-conventions.md` 一致；日志中无密码与令牌原文；`pytest` / `ruff` / `mypy` 全绿
+
+    > 复查真实 server.log：不含任何密码原文与令牌（`eyJ` 前缀 JWT 亦无）；
+    > pytest 217 / ruff / mypy 全绿。
+- [x] 7.9 更新 `AGENTS.md`、`.env.example` 与 `notes/scaffold/residual-risks.md`（标记第 2、5 条已处理），提交变更
+
+    > `residual-risks.md` 第 2、3、5 条均已标记处理；`.env.example` 无需再改
+    > （§1.4 已对齐认证键面）。联调脚本保留在 `backend/scripts/`（ASCII，
+    > 可重复执行：`uv run python scripts/e2e_flow.py`）。
