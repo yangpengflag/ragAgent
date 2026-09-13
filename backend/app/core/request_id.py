@@ -30,6 +30,9 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         request_id = incoming if _VALID_REQUEST_ID.match(incoming) else uuid4().hex
 
         token = request_id_var.set(request_id)
+        # 同步落到 request.state：异常路径下 contextvar 会被 reset，
+        # 外层 ServerErrorMiddleware 仍能据此补回响应头与信封字段
+        request.state.request_id = request_id
         try:
             response = await call_next(request)
             response.headers[REQUEST_ID_HEADER] = request_id

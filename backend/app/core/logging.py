@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import MutableMapping
 from typing import Any, cast
 
@@ -14,28 +15,100 @@ from structlog.typing import FilteringBoundLogger
 
 from app.core.request_context import request_id_var
 
-# 命中任一子串即视为敏感字段（对 key 做小写匹配）
-SENSITIVE_KEY_PARTS = (
-    "password",
-    "passwd",
-    "secret",
-    "token",
-    "api_key",
-    "access_key",
-    "authorization",
+# 词段匹配：先把 camelCase 拆成 snake_case，再按词段判断，
+# 这样 secretKey / apiKey / refreshToken 这类命名也能命中。
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+_WORD_SPLIT = re.compile(r"[^a-z0-9]+")
+
+# 出现即视为敏感的词段（含复数形）
+_SENSITIVE_SEGMENTS = frozenset(
+    {
+        "password",
+        "passwords",
+        "passwd",
+        "passphrase",
+        "pwd",
+        "secret",
+        "secrets",
+        "credential",
+        "credentials",
+        "authorization",
+        "bearer",
+    }
 )
+# `*_key` 仅在带这些前缀时视为敏感（避免误伤 partition_key / dedup_key）
+_SENSITIVE_KEY_PREFIXES = frozenset(
+    {"api", "access", "private", "secret", "signing", "encryption"}
+)
+# `token(s)` 在这些前缀/后缀下是计数或额度，不是凭据。
+# ⚠️ 权衡：命中白名单的键**永不脱敏**——若有人把凭据放进 `prompt_tokens`
+# 之类的字段，会直接落盘。这里选择"可观测性优先"，因为 LLM 用量指标极其常用。
+_TOKEN_SAFE_PREFIXES = frozenset(
+    {
+        "max",
+        "min",
+        "target",
+        "total",
+        "prompt",
+        "completion",
+        "budget",
+        "input",
+        "output",
+        "used",
+        "usage",
+        "remaining",
+        "available",
+        "reserved",
+        "consumed",
+    }
+)
+_TOKEN_SAFE_SUFFIXES = frozenset(
+    {"count", "budget", "limit", "size", "length", "used", "usage", "remaining"}
+)
+
+# 字符串里的凭据型 URL。两条模式：
+# ① 带 scheme：用户名可空（redis://:pwd@host），口令可含 `@`（在最后一个 @ 收口）
+# ② 不带 scheme：`user:pass@host`（f-string 拼日志的常见形态）
+_DSN_WITH_SCHEME = re.compile(r"://([^/\s@]*):[^/\s]*@")
+_DSN_BARE = re.compile(r"(?<![\w/])([A-Za-z0-9_.\-]+):([^\s/@:]+)@([A-Za-z0-9_.\-]+)")
 MASK = "***"
 
 
+def _segments(key: str) -> list[str]:
+    normalized = _CAMEL_BOUNDARY.sub("_", key)
+    return [segment for segment in _WORD_SPLIT.split(normalized.lower()) if segment]
+
+
 def _is_sensitive_key(key: str) -> bool:
-    lowered = key.lower()
-    return any(part in lowered for part in SENSITIVE_KEY_PARTS)
+    segments = _segments(key)
+    if not segments:
+        return False
+    if any(segment in _SENSITIVE_SEGMENTS for segment in segments):
+        return True
+    for index, segment in enumerate(segments):
+        previous = segments[index - 1] if index else ""
+        following = segments[index + 1] if index + 1 < len(segments) else ""
+        if segment in {"token", "tokens"}:
+            if previous in _TOKEN_SAFE_PREFIXES or following in _TOKEN_SAFE_SUFFIXES:
+                continue
+            return True
+        if segment == "key" and previous in _SENSITIVE_KEY_PREFIXES:
+            return True
+    return False
+
+
+def _scrub_credentials(text: str) -> str:
+    """兜底：字符串值中的连接串凭据打码（异常堆栈常内嵌 DSN）。"""
+    scrubbed = _DSN_WITH_SCHEME.sub(r"://\1:***@", text)
+    return _DSN_BARE.sub(r"\1:***@\3", scrubbed)
 
 
 def _walk(value: Any, key: str = "") -> Any:
-    """递归脱敏：命中敏感 key 直接掩码，否则下钻 dict / list。"""
+    """递归脱敏：命中敏感 key 直接掩码，字符串做凭据兜底，再下钻 dict / list。"""
     if _is_sensitive_key(key):
         return MASK
+    if isinstance(value, str):
+        return _scrub_credentials(value)
     if isinstance(value, MutableMapping):
         return {k: _walk(v, str(k)) for k, v in value.items()}
     if isinstance(value, (list, tuple)):

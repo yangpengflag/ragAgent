@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
@@ -38,14 +39,23 @@ def test_request_id_header_is_case_insensitive():
     assert response.headers["X-Request-ID"] == "abc-123"
 
 
-def test_malformed_request_id_is_replaced():
-    """含非法字符（空格/控制字符/超长）的上游值必须被丢弃并重新生成。"""
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        "bad id with spaces",  # 空格
+        "a" * 129,  # 超长
+        "id/with/slash",  # 白名单外字符
+        "a\tb",  # 控制字符（\t；\r\n 会被 HTTP 层先拒）
+    ],
+)
+def test_malformed_request_id_is_replaced(malformed):
+    """非法上游值（空格 / 超长 / 白名单外字符）必须被丢弃并重新生成。"""
     client = TestClient(create_app())
 
-    response = client.get("/openapi.json", headers={"X-Request-ID": "bad id with spaces"})
+    response = client.get("/openapi.json", headers={"X-Request-ID": malformed})
 
     regenerated = response.headers["X-Request-ID"]
-    assert regenerated != "bad id with spaces"
+    assert regenerated != malformed
     assert len(regenerated) <= 128
 
 

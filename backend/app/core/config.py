@@ -12,21 +12,11 @@ from pathlib import Path
 from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.exceptions import InvalidConfigurationError, MissingConfigurationError
+
 # backend/app/core/config.py → parents: [0]=core [1]=app [2]=backend [3]=仓库根
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ENV_FILE = REPO_ROOT / ".env"
-
-
-class ConfigurationError(Exception):
-    """配置错误基类。"""
-
-
-class MissingConfigurationError(ConfigurationError):
-    """必需配置缺失。错误消息中列出缺失的环境变量名。"""
-
-
-class InvalidConfigurationError(ConfigurationError):
-    """配置存在但无法解析（如端口写成非数字）。"""
 
 
 class Settings(BaseSettings):
@@ -38,7 +28,8 @@ class Settings(BaseSettings):
 
     # ---------------------------------------------------------------- 应用
     app_env: str = "dev"
-    app_debug: bool = True
+    # 默认 False：debug 模式会绕过异常处理器并泄漏堆栈，不应成为默认值
+    app_debug: bool = False
     app_secret_key: str = Field(repr=False)
     app_port: int = 8000
     app_cors_origins: str = "http://localhost:5173"
