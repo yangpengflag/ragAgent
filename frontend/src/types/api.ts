@@ -24,3 +24,34 @@ export interface HealthResponse {
   status: "ok" | "degraded";
   components: Record<string, HealthComponent>;
 }
+
+/** 账号摘要（后端 `user` 字段：`{id, username, display_name, system_role}`） */
+export interface UserSummary {
+  id: string;
+  username: string;
+  display_name: string | null;
+  system_role: string;
+}
+
+/** `POST /api/v1/auth/login` 响应：同时下发刷新令牌 Cookie */
+export interface LoginResponse {
+  request_id: string;
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  user: UserSummary;
+}
+
+/** `POST /api/v1/auth/refresh` 响应：只给令牌，不含账号（账号另调 `/me`） */
+export interface RefreshResponse {
+  request_id: string;
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
+/** `GET /api/v1/auth/me` 响应 */
+export interface MeResponse {
+  request_id: string;
+  user: UserSummary;
+}

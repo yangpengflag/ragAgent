@@ -1,9 +1,11 @@
-import { Menu } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import { useEffect } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { NAV_ITEMS, findNavItem } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
+import { performLogout } from "@/features/auth/logout";
+import { useSessionStore } from "@/features/auth/session-store";
 import {
   Sheet,
   SheetContent,
@@ -11,24 +13,20 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { setAuthFailureHandler } from "@/lib/api/session";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/store/ui";
 
 /**
  * 应用外壳：桌面固定侧边栏 + 内容区；小屏收起为抽屉。
- * 同时承担"刷新令牌失效后跳转登录"的接线（守卫集中在 app 层，不在页面内重复判断）。
+ *
+ * 不再注册"刷新失败"处理器：它已上移到路由最外层的 `AuthFailureBridge`——
+ * 跳转登录恰恰发生在离开受保护路由时，挂在会被卸载的布局组件上是脆弱的。
  */
 export function AppLayout() {
   const location = useLocation();
-  const navigate = useNavigate();
   const navOpen = useUiStore((state) => state.navOpen);
   const setNavOpen = useUiStore((state) => state.setNavOpen);
-
-  useEffect(() => {
-    setAuthFailureHandler(() => navigate("/login", { replace: true }));
-    return () => setAuthFailureHandler(null);
-  }, [navigate]);
+  const account = useSessionStore((state) => state.user);
 
   useEffect(() => {
     setNavOpen(false);
@@ -66,6 +64,28 @@ export function AppLayout() {
           <span className="text-sm font-semibold text-slate-900">
             {current?.label ?? "EKB"}
           </span>
+
+          <div className="ml-auto flex items-center gap-3">
+            {account !== null ? (
+              <>
+                <span
+                  className="text-sm text-slate-600"
+                  data-testid="current-account"
+                >
+                  {account.username}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void performLogout()}
+                >
+                  <LogOut aria-hidden="true" />
+                  登出
+                </Button>
+              </>
+            ) : null}
+          </div>
         </header>
 
         <main className="flex-1 overflow-y-auto">
