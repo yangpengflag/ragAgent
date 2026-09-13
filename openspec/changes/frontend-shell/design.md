@@ -93,6 +93,7 @@
 - **401 刷新重放的并发边界** → 用单例 Promise 收敛；若刷新中又出现新 401，复用同一 Promise 而非再发一次刷新。
 - **Vite 与 Tailwind 4 的版本兼容** → 锁定版本并写入 `package.json`，避免 `@latest` 带来的隐性升级。
 - **路由守卫占位与真实鉴权的衔接** → 本 change 只留跳转占位，真实鉴权在 auth change 接入；避免此处提前实现未定的登录态存储方式。
+- **React 18 与 shadcn/ui 现行源码的写法差异（实施期发现）** → 现行 shadcn/ui 源码按 React 19 的"`ref` 作为普通 prop"写法生成，在 **React 18** 下会丢失 Radix 经 Portal/Slot 注入的 ref：实测 `SheetOverlay` 在打开抽屉时报 `Warning: Function components cannot be given refs`，焦点管理随之失效。因此 `src/components/ui/` 下的基础组件以 **React 18 规范形态**（`React.forwardRef` + `displayName`）落库，其余样式与结构保持 shadcn 原样；后续用 `shadcn add` 新增组件时需同样补 `forwardRef`。该处理不改变 R6「基础组件不被手工定制」的意图（不 fork 样式、不加业务逻辑）。
 
 ## Migration Plan
 

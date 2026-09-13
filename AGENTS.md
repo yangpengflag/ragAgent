@@ -89,7 +89,11 @@ ekb/                          ← 单一 git 仓库
 
 - **技术栈**：React 18 + Vite + TypeScript + Tailwind CSS 4 + shadcn/ui + lucide-react
 - **状态**：TanStack Query（服务端状态）+ Zustand（本地 UI 状态）
-- **测试**：Vitest + React Testing Library
+- **测试**：Vitest + React Testing Library + jsdom，HTTP 由 **msw** 拦截（**不依赖真实后端**）
+- **质量**：`npm run lint` + `npm run typecheck` + `npm run build`
+- **目录**：`src/{app,components/ui,components,features,lib,store,types}`；测试文件与被测源码同目录（`Xxx.test.tsx`），共享测试基建在 `tests/`
+- **请求层**：所有请求经 `src/lib/api/client.ts`（基址、Bearer 注入、401 刷新重放、错误归一化为 `ApiError`），字段名与后端一致不做转换
+- **配置**：`frontend/.env` 的 `VITE_API_BASE_URL`（默认 `http://localhost:8000`；CORS 已放行 `http://localhost:5173`）
 - **编码规约**：`<harness>/rules/frontend-conventions.md`
 
 ## 本地开发
@@ -108,6 +112,8 @@ uv run uvicorn --factory app.main:create_app --reload   # 开发模式
 cd frontend
 npm install
 npm run dev          # 5173
+npm run test         # Vitest（后端未启动也能全绿）
+npm run lint && npm run typecheck && npm run build
 ```
 
 若 Milvus 未起：
