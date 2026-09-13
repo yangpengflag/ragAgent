@@ -10,7 +10,7 @@ from collections.abc import Callable, Iterator
 
 import pytest
 from dotenv import dotenv_values
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, StaticPool, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import ENV_FILE, Settings, get_settings, load_settings
@@ -146,8 +146,16 @@ def hanging_probes() -> list[FakeProbe]:
 
 @pytest.fixture
 def sqlite_engine() -> Iterator[Engine]:
-    """内存 SQLite 引擎：用于验证模型层行为，不依赖 MySQL。"""
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
+    """内存 SQLite 引擎：用于验证模型层行为，不依赖 MySQL。
+
+    必须用 StaticPool 共享单连接：内存库默认每线程一个独立数据库，
+    TestClient 的请求在别的线程执行时会拿到一个空库（no such table）。
+    """
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     try:
         yield engine
     finally:

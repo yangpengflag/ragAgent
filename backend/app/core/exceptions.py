@@ -56,6 +56,13 @@ class TokenExpiredError(AppError):
     error_code = ErrorCode.TOKEN_EXPIRED
 
 
+class AccessDeniedError(AppError):
+    """已认证但权限不足（或来源不被允许）。403 `access_denied`，与 401 区分。"""
+
+    status_code = HTTPStatus.FORBIDDEN
+    error_code = ErrorCode.ACCESS_DENIED
+
+
 class ConfigurationError(Exception):
     """配置错误（启动期，不面向 HTTP 调用方）。"""
 

@@ -19,12 +19,15 @@ from app.core.exceptions import InvalidConfigurationError
 from app.core.logging import configure_logging, get_logger
 from app.core.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
 
+_logger = get_logger()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """启动/关闭时释放资源与记录日志。"""
-    logger = get_logger()
+    logger = _logger
     logger.info("application starting")
+    _bootstrap_initial_admin()
     try:
         yield
     finally:
@@ -32,6 +35,40 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if get_engine.cache_info().currsize:
             get_engine().dispose()
         logger.info("application stopped")
+
+
+def _bootstrap_initial_admin() -> None:
+    """启动阶段引导初始管理员（design D10，tasks 5.17/5.18）。
+
+    全部分支判断与并发处理都在 `bootstrap_admin` 内；
+    引导失败（除已存在）不应阻断启动——DB 故障时健康检查会如实暴露。
+    """
+    from sqlalchemy import text
+
+    from app.core.db import get_session_factory
+    from app.services.auth_service import bootstrap_admin
+
+    settings = load_settings()
+    session = get_session_factory()()
+    try:
+        # 探活：DB 不可达时跳过引导而非崩溃（首次迁移可能尚未执行）
+        session.execute(text("SELECT 1"))
+    except Exception as exc:
+        _logger.warning(
+            "bootstrap admin skipped: database unreachable", error=type(exc).__name__
+        )
+        return
+    finally:
+        session.close()
+    bootstrap_session = get_session_factory()()
+    try:
+        bootstrap_admin(
+            bootstrap_session,
+            username=settings.bootstrap_admin_username,
+            password=settings.bootstrap_admin_password,
+        )
+    finally:
+        bootstrap_session.close()
 
 
 def _cors_origins(settings: Settings) -> list[str]:
