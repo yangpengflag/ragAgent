@@ -4,7 +4,9 @@
 
 现有可复用的地基（`project-scaffold` 已交付）：
 
-- 配置层（pydantic-settings + 必填项 fail-fast）、统一错误信封（`error_code` 语义化 snake_case）、结构化日志与 `request_id`、`BoundedBase`（UUID v7 主键 / 创建更新时间 / 软删）、Alembic 迁移与测试库守卫
+- 配置层（pydantic-settings + 必填项 fail-fast）、统一错误信封（`error_code` 语义化 snake_case）、结构化日志与 `request_id`、`BaseModel`（UUID v7 主键 / 创建更新时间 / 软删）、Alembic 迁移与测试库守卫
+- CORS 中间件**已开启** `allow_credentials=True`，且无条件拒绝通配符来源（`main.py`）——本 change 只需**验证并锁定**该行为，不需要新开
+- `notes/scaffold/residual-risks.md` 中两条债务的触发条件正好落在本 change（见「必付债务」）
 - `GET /api/v1/health` 已存在且必须保持**匿名可访问**（不受本次鉴权影响）
 
 环境约束：单机本地部署，Redis（6379 容器）可用；无 GPU、内存紧张，故不引入重量级依赖。
@@ -19,6 +21,7 @@
 - 鉴权做成**可复用依赖**（当前账号 / 角色要求），后续每个业务接口只需声明依赖，不再各自解析令牌
 - 权限模型留出扩展点：系统角色与将来的知识库级角色解耦
 - 接口契约与安全语义在本 change 内被完整验证（含 Redis 故障时的两种失败方向）
+- **偿还两笔既有的、由本 change 触发的 scaffold 债务**：软删的全局过滤与唯一约束（D15）、成功响应的 `request_id` 统一化（D16）
 
 **Non-Goals（设计层面的边界）:**
 
@@ -47,11 +50,19 @@
 
 **理由**：两者都是当前主流且维护活跃的选择；Argon2id 是 OWASP 推荐的密码哈希算法。
 
-> ⚠️ 该决策**修订了 `openspec/project.md` 技术栈章节**的既定写法（原文写 `passlib[bcrypt]` + `python-jose`），本 change 需同步更新 project.md，避免"规格写了一版、代码跑另一版"。
+> **现状核对（已实际核对）**：`project.md` 的技术栈表**原先没有「认证库」这一行**，全文也没有任何 `passlib` / `python-jose` 字样——所以本 change 是**新增**该行，不是修订。
+>
+> 真正需要收敛的是 `.env.example` 里四个**尚无消费者**的键。本 change 的取舍：
+>
+> - **签名密钥只保留 `APP_SECRET_KEY`**（`Settings` 已声明、`conftest` 已注入），`.env.example` 中的 `JWT_SECRET_KEY` **删除**，避免两把密钥并存造成误配
+> - `JWT_ALGORITHM` / `JWT_ACCESS_TOKEN_EXPIRE_MIN` / `JWT_REFRESH_TOKEN_EXPIRE_DAYS` **沿用既有键名**，补入 `Settings` 声明与测试（落实 `notes/scaffold/residual-risks.md` 第 7 条）
+> - 密钥强度下限写死为 **≥ 32 字符**（见「必付债务」对 `conftest` 占位值的同步修订）
 
 ### D3. 令牌放置：访问令牌走响应体，刷新令牌只走 HttpOnly Cookie
 
-**选择**：登录/刷新响应体返回访问令牌；刷新令牌仅以 `Set-Cookie` 下发，属性 `HttpOnly` + `SameSite=Lax` + `Path=/api/v1/auth/refresh`，`Secure` 由配置决定（本地 http 关闭、生产必须开启）。
+**选择**：登录/刷新响应体返回访问令牌；刷新令牌仅以 `Set-Cookie` 下发，属性 `HttpOnly` + `SameSite=Lax` + **`Path=/api/v1/auth`**，`Secure` 由配置决定（本地 http 关闭、生产必须开启）。
+
+> ⚠️ `Path` 必须覆盖到 `/api/v1/auth`，**不能收窄到 `/api/v1/auth/refresh`**：浏览器只在路径前缀匹配时携带 Cookie，若收窄成刷新端点自身，`POST /api/v1/auth/logout` 就收不到刷新令牌，服务端无法取 `jti` 撤销——登出会静默失效（这是设计评审发现的问题）。
 
 **备选**：刷新令牌也放响应体由客户端自行保存——与 spec 中「刷新令牌只从 Cookie 读取」的要求冲突，且长期凭据会落到脚本可读的位置。
 
@@ -81,9 +92,11 @@
 
 ### D7. 角色模型分层：本次只落系统角色
 
-**选择**：`system_role ∈ {ADMIN, MEMBER}`；`require_role(...)` 依赖按「所需角色集合」参数化，将来知识库级四档角色（KB_ADMIN / EDITOR / VIEWER）作为**另一层**校验接入，不改骨架。
+**选择**：`system_role ∈ {ADMIN, MEMBER}`；`require_role(...)` 依赖按「所需角色集合」参数化，将来知识库级三档角色（`KB_ADMIN` / `EDITOR` / `VIEWER`）作为**另一层**校验接入，不改骨架。
 
 **理由**：库级 ACL 的判定必须依赖「知识库」实体与「成员授权」表，属于 `knowledge-base-crud` 的范畴；此处提前实现只会返工。
+
+> `project.md` 的角色模型已同步修订为**两层**：系统级 `ADMIN` / `MEMBER`（本 change 落地）+ 库级 `KB_ADMIN` / `EDITOR` / `VIEWER`（随知识库能力落地）——原先"四档角色"的写法把两层混在一起，且没有 `MEMBER` 这一实际存在的成员角色。
 
 ### D8. 密码策略
 
@@ -115,19 +128,70 @@
 
 **理由**：`project.md` 已明确「预留 AuthProvider 抽象」，且该抽象只此一处、成本极低。
 
-### D12. 跨源携带凭据：必须显式开启且来源不得通配
+### D12. 跨源携带凭据：行为已存在，本 change 只验证与锁定
 
-**选择**：CORS 中间件开启 `allow_credentials=True`，来源**只能**是配置白名单中的具体源（不得为 `*`），与既有「非 debug 环境下拒绝通配符来源」的守卫一致。
+**现状**：`main.py` 的 CORS 中间件**已经**是 `allow_credentials=True`，并且**无条件**拒绝 `*` 来源（启动期直接抛错，不是"仅非 debug 才拒绝"）。
 
-**理由**：开发期前端在 `5173`、后端在 `8000`，二者**不同源**。浏览器在跨源请求中默认不发送也不接受 Cookie；不开启凭据支持时，登录响应里的 `Set-Cookie` 会被丢弃、刷新请求也带不上 Cookie——接口"看起来实现了"，但从浏览器调用必然失败。此外，规范禁止 `Allow-Credentials: true` 与 `Allow-Origin: *` 同时出现。
+**选择**：本 change **不改** CORS 实现，只补测试把该行为锁死（`Allow-Credentials: true` + 回显具体来源；非白名单来源不返回 CORS 头），并把这条**长期没有规格归属**的既有行为首次写进 spec。
 
-> 这是本 change 里唯一"因为前端形态而必须由后端调整"的地方，但它属于**后端的对外契约**（Cookie 能否生效），因此放在本 change 而不是前端 change 中。
+**理由**：开发期前端在 `5173`、后端在 `8000`，二者**不同源**。浏览器在跨源请求中默认不发送也不接受 Cookie；一旦有人把 CORS 配置改回通配符来源，登录响应里的 `Set-Cookie` 会被丢弃、刷新请求也带不上 Cookie——接口"看起来实现了"，从浏览器调用却必然失败，且现象（登录后立刻掉线）很难定位。规范也禁止 `Allow-Credentials: true` 与 `Allow-Origin: *` 同时出现。
+
+> 归属说明：CORS 属于骨架职责（`main.py`），本 change 把它写进 `authentication` 能力是"首次为既有行为补规格"，不是因为它属于认证。后续若有骨架级的 CORS 调整，应回改此处规格。
 
 ### D13. 数据模型与迁移
 
-**选择**：新增 `users` 表（`username` 唯一索引 + 软删标记），沿用 `BoundedBase` 的公共字段；迁移只建表，无数据迁移。回滚即 `drop table`。
+**选择**：新增 `users` 表，沿用 `BaseModel` 的公共字段；迁移建表 + **部分唯一索引** + `deleted_at` 索引，无数据迁移。回滚即 `drop table`。
 
-`username` 唯一性由**数据库唯一约束**保证（并发创建同名账号时靠约束而非「先查后插」），业务层把约束冲突转换为 409。
+**唯一性**：`username` 唯一性由**数据库约束**保证（并发创建同名账号时靠约束而非"先查后插"），业务层把约束冲突转换为 409。由于账号是软删，唯一索引 MUST 写成**部分唯一索引**（`WHERE deleted_at IS NULL`），否则软删掉 `zhangsan` 之后同名账号永远无法重建（用户会看到 409 却在列表里找不到这个名字，无法自解释）。该要求来自 `notes/scaffold/residual-risks.md` 第 5 条。
+
+### D14. 会话即时失效用「会话纪元」，而不是枚举撤销
+
+**选择**：`users` 表增加 `session_epoch`（整数，初始 0）。刷新令牌签发时把当时的 epoch 写入载荷；刷新校验时要求 `token.epoch == user.session_epoch`。重置密码、停用、软删、改角色时 `session_epoch += 1`，该账号**全部**既有刷新令牌立即失效。
+
+**备选**：① 只靠黑名单逐条撤销——需要能枚举"某账号的所有 jti"，而黑名单方案下并没有这个索引结构；② 维护「账号 → jti 集合」——多一份状态且要处理过期清理。
+
+**理由**：刷新路径本来就必须查库（D6/D15 的账号状态校验），顺带比较一个整数是零成本；而"管理员重置了密码，攻击者的会话还能续期 7 天"是真实的安全缺口，必须堵。
+
+**代价**：已签发的**访问令牌**不受影响（最长再活 15 分钟）——这是无状态访问令牌的固有取舍，记入残风险。
+
+### D15. 偿还 scaffold 债务：软删的全局过滤与唯一约束
+
+`notes/scaffold/residual-risks.md` 第 5 条明确「**首个业务实体 change 一并处理**」，`users` 正是首个业务实体。本 change 必须一次性处理：
+
+1. 注册全局软删过滤（`with_loader_criteria`），使 `select` / `session.get` 默认不返回已软删行——否则"列表不含软删账号""登录不认软删账号"这类要求会在每个查询点上被反复遗忘
+2. 提供显式的「包含已软删」逃生通道（供将来审计类查询使用），避免全局过滤变成不可绕过的黑箱
+3. `deleted_at` 补索引（软删过滤条件会出现在几乎每次查询上）
+4. `BaseModel.soft_delete()` 改为**幂等**（已软删则不再覆盖时间戳）
+
+**理由**：这四项都属于"第一次引入查询过滤时必须一并解决"的底座问题；分摊到后续每个业务 change 处理，成本更高且必然遗漏。
+
+**不做**：`restore()`（本期不支持从软删恢复，见 `identity` 规格说明）。
+
+### D16. 偿还 scaffold 债务：成功响应统一携带 `request_id`
+
+`notes/scaffold/residual-risks.md` 第 2 条明确「**首个业务端点前**应补一个响应包装/依赖」，本 change 正是首个业务端点。`project-scaffold` 的 R2 本就要求「响应体（成功与错误响应均包含）`request_id`」，目前只有 `/api/health` 手工带了该字段。
+
+**选择**：引入统一响应模型（顶层 `request_id` + 端点自身字段），所有新端点的成功响应 MUST 继承它；`/api/v1/health` 的响应形状保持不变（它本就返回顶层 `request_id`），一并收敛到同一模型。列表沿用 `api-conventions.md` 的分页信封（顶层 `request_id` + `items` / `page` / `size` / `total` / `has_more`）。
+
+**备选**：把成功响应也包成 `{request_id, data}` —— 会改变 `/health` 的既有契约，且前端已按现shape消费，属破坏性变更。
+
+### D17. 限流的来源地址取对端连接地址
+
+**选择**：限流键 = `username（小写去空白）` + `request.client.host`；**不读** `X-Forwarded-For` 等转发头。
+
+**理由**：本期没有反向代理，转发头完全由客户端伪造——若采信，攻击者每次换一个假 IP 就能绕过限流（等于没限流）。将来若置于代理之后，必须显式配置可信代理链再改此决策。
+
+### D18. 一个 change 两个 capability 的理由
+
+`identity` 与 `authentication` 在此处**同批交付**，但分属两个 capability 文件，理由：两者是可独立演进的分层（账号实体的增改停用 vs 令牌与鉴权机制），未来「账号管理界面」「LDAP 接入」只会改其中之一；且依赖方向单一（`authentication` 依赖 `identity` 的实体，反向不依赖）。`project.md` 的 capability 粒度约定已按此放宽（新增/修改/多能力三种情形分别规定）。
+
+### D19. 路由装配引入 `api/v1` 聚合器
+
+**选择**：新增 `app/api/v1/router.py` 聚合 v1 路由，`main.py` 只挂一次聚合器；顺带把现有的 `/health` 迁入该聚合器。
+
+**备选**：继续在 `main.py` 逐个 `include_router` —— 本 change 要加 2 个路由文件，后续还会加知识库/文档/问答/检索，`main.py` 会变成路由清单。
+
+**理由**：一次小重构换来后续每个 change 都少改一处装配；且 `health` 迁移后路径与行为不变（有既有测试兜底）。
 
 ## Risks / Trade-offs
 
@@ -138,19 +202,26 @@
 - **黑名单依赖轮换写入成功**（D4）→ 拉黑失败即整体失败，不允许「发了新令牌但旧令牌未失效」
 - **限流按用户名 + 来源地址** → 分布式/多 IP 慢速爆破不在防护范围（记入残风险）
 - **接口在 `frontend-auth-wiring` 之前无人调用** → 属预期：本 change 的验收靠接口级测试与真实 HTTP 联调，不依赖 UI
+- **会话纪元不影响已签发的访问令牌**（D14）→ 停用/改密后最长仍有 15 分钟窗口可用访问令牌；这是无状态访问令牌的固有取舍（若要即时生效，需每请求比对纪元——本 change 的 `get_current_user` 已查库，可比对，但为保持"停用即时生效"已由 D6 覆盖，故不额外叠加，记入残风险）
+- **500 响应缺 CORS 头**（`notes/scaffold/residual-risks.md` 第 3 条，触发条件为"首个前端联调前"）→ 本 change 只做**评估并给出结论**，实际修复留给 `frontend-auth-wiring` 或独立小变更（前端需对所有失败形态有兜底提示）
+- **密钥长度下限提升到 32 字符会打红既有测试** → `conftest` 的占位值（`test-secret`，11 字符）与 `.env.example` 的样例必须同步修订；否则实现的第一步就会让全部测试文件在 `load_settings()` 处抛错（已在 tasks 1.4 显式列出）
+- **需求面较大**（两个 capability 共 18 条需求 / 48 个场景）→ 实现按 capability 分文件推进（先 `identity` 后 `authentication`），避免一次改动过宽
 
 ## Migration Plan
 
 实现顺序（也是 tasks 的顺序）：
 
-1. 配置项、依赖与规格同步（含 `project.md` 技术栈修订）
-2. `Account` 模型 + Alembic 迁移
-3. 密码与令牌原语（纯函数，可单测）
-4. 认证服务（登录、刷新、登出、限流、初始管理员引导）
-5. 鉴权依赖 + `auth` / `users` 路由 + 错误语义（401 / 403 / 409 / 422 / 429 / 503）
-6. 真实 HTTP 联调与收尾
+1. 配置项、依赖与规格同步（含 `project.md` 的技术栈新增、角色模型两层化、capability 粒度约定放宽）
+2. **地基补足**：软删全局过滤与幂等 `soft_delete()`、统一响应模型、`api/v1` 路由聚合器（含把 `health` 迁入）
+3. `Account` 模型 + Alembic 迁移（含部分唯一索引）
+4. 密码与令牌原语（纯函数，可单测）
+5. 认证服务（登录、刷新、登出、会话纪元、限流、初始管理员引导；依赖全部走可注入端口）
+6. 鉴权依赖 + `auth` / `users` 路由（401 / 403 / 404 / 409 / 422 / 429 / 503）
+7. 真实 HTTP 联调与收尾
 
-**回滚**：本 change 不影响既有接口（`/health` 保持匿名）。若不启用，只需不配置初始管理员、不调用新接口；数据库侧 `alembic downgrade` 删除 `users` 表。
+**为什么地基补足排在前面**：第 3 步之后的每一次查询都依赖软删过滤，第 6 步之后每个端点都依赖统一响应模型；放在后面会造成大面积返工，且容易漏（`notes/scaffold/residual-risks.md` 第 2、5 条正是为此而记）。
+
+**回滚**：本 change 不影响既有接口的**对外行为**（`/health` 路径与响应形状不变，仍匿名可访问）。若不启用，只需不配置初始管理员、不调用新接口；数据库侧 `alembic downgrade` 删除 `users` 表。软删过滤与响应模型属于底座改动，回退它们需要单独评估（会被后续所有查询依赖）。
 
 ## Open Questions
 

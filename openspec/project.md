@@ -19,7 +19,7 @@ EKB 把这些文档解析、切分、向量化后建成可检索的知识库，�
 ## 范围（in scope）
 
 - **多知识库（Knowledge Base）**：企业内部按部门/主题/项目建库，库与库之间数据与检索隔离。
-- **用户与权限**：本地账号 + JWT 鉴权；四档角色（ADMIN / KB_ADMIN / EDITOR / VIEWER）；库级 ACL；权限下推至向量检索。
+- **用户与权限**：本地账号 + JWT 鉴权；**两层角色**——系统级 `ADMIN` / `MEMBER`（本期落地），库级 `KB_ADMIN` / `EDITOR` / `VIEWER`（随知识库能力落地）；库级 ACL；权限下推至向量检索。
 - **文档管理**：上传 PDF / Word / Markdown；文件哈希去重；解析状态机；失败重试；删除同步清理索引。
 - **文档解析（MinerU）**：提取文本、表格、代码、公式（LaTeX）、图片与图注；输出 `content_list.json` 作为下游唯一原料。解析后端可插拔（云 API / 本地服务）。
 - **文本切分**：结构感知 + 动态长度 + 上下文增强 + 父子块；重叠缓冲作为可开关的兜底策略。
@@ -65,6 +65,7 @@ EKB 把这些文档解析、切分、向量化后建成可检索的知识库，�
 | 后端框架 | FastAPI | 异步；原生 OpenAPI |
 | ORM / 迁移 | SQLAlchemy 2.0 + Alembic | 迁移必须入仓 |
 | 数据校验 | Pydantic v2 | 请求/响应 Schema 唯一来源 |
+| 认证与令牌 | PyJWT + pwdlib[argon2] | 访问令牌 15 分钟（走响应体）/ 刷新令牌 7 天（走 `HttpOnly` Cookie）；密码哈希用 Argon2id。**不选** `python-jose`（≤3.3.0 有 CVE-2024-33663 / 33664）与 `passlib`（1.7.4 停更于 2020 年） |
 | 任务队列 | Celery 5 + Redis | 解析/向量化等长任务 |
 | 后端测试 | pytest + pytest-asyncio | 领域层纯函数单测为主 |
 | 代码质量 | ruff + mypy | CI 门禁 |
@@ -172,7 +173,8 @@ query → embedding(text_type=query)
 
 ### 多知识库与权限
 
-- 角色四档：`ADMIN` / `KB_ADMIN` / `EDITOR` / `VIEWER`
+- **系统级角色**（账号维度）：`ADMIN` / `MEMBER`。`ADMIN` 可管理账号与全局配置；`MEMBER` 仅能访问被授权的知识库资源。
+- **库级角色**（授权维度，随知识库能力引入）：`KB_ADMIN`（管本库文档与授权）/ `EDITOR`（上传与重建索引）/ `VIEWER`（仅检索问答）
 - 授权表：`user_kb_grant(user_id, kb_id, role)`，库级粒度
 - **权限下推**：Milvus 检索带 `kb_id` 过滤；禁止"先检索再过滤"
 - **二次鉴权**：引用溯源返回 chunk 原文前再次校验权限
@@ -205,9 +207,11 @@ query → embedding(text_type=query)
 
 ## OpenSpec Conventions
 
-### Capability 粒度：每 change 一个 capability
+### Capability 粒度
 
-- 每个 OpenSpec change 对应一个独立 capability，命名与 change 名一致（kebab-case）。
+- **新增 capability**：change 名与该 capability 名一致（kebab-case）。
+- **只修改既有 capability**：不强制同名（例如 `frontend-auth-wiring` 修改 `frontend-shell`），但 MUST 在 `design.md` 说明。
+- **一个 change 引入多个 capability**：仅当它们是可独立演进的分层、且依赖关系明确时允许，并 MUST 在 `design.md` 说明为何不再拆（例如 `auth-and-users` 的 `identity` 与 `authentication`）。
 - archive 时 `openspec/specs/<capability>/spec.md` 各归各位、零冲突。
 
 ### `openspec/notes/` 的角色

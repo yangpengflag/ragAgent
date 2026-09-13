@@ -10,8 +10,11 @@
 
 - 新增**用户账号**能力：用户实体（用户名、显示名、密码哈希、是否启用、系统角色、公共字段）、由 ADMIN 管理账号（创建 / 列表 / 查看 / 修改显示名与系统角色 / 启用停用 / 删除 / 重置密码）、密码强度策略、初始管理员引导
 - 新增**认证**能力：账号密码登录签发令牌、访问令牌与刷新令牌（刷新令牌走 `HttpOnly` Cookie）、令牌刷新与轮换、登出与刷新令牌撤销、登录失败限流、以及供路由复用的鉴权依赖（当前账号 / 系统角色校验）
-- **修正依赖选型**：`PyJWT`（替代 `python-jose`）+ `pwdlib[argon2]`（Argon2id，替代 `passlib`）
-- 修订 `openspec/project.md` 的技术栈章节（认证库）与权限模型章节（明确本次只做「系统级角色」，库级 ACL 随知识库能力引入）
+- **确定认证依赖选型**：`PyJWT` + `pwdlib[argon2]`（Argon2id）。本文档原先声称"修订 `project.md` 既定的 passlib / python-jose"——**经核对不成立**：`project.md` 从没有认证库这一行。真正的动作是**新增**该行，并收敛 `.env.example` 中四个尚无消费者的 `JWT_*` 键
+- **偿还两笔既有债务**（`notes/scaffold/residual-risks.md` 第 2、5 条的触发条件正好落在本 change）：
+  - **首个业务实体**：软删引入全局查询过滤与**部分唯一索引**（否则删掉账号后同名永不可重建），并把 `soft_delete()` 改为幂等
+  - **首个业务端点**：成功响应统一携带 `request_id`（`project-scaffold` R2 本就要求，此前只有 `/health` 手工带）
+- 修订 `openspec/project.md`：技术栈**新增**认证库一行；角色模型改为**两层**（系统级 `ADMIN` / `MEMBER`，库级三档）；capability 粒度约定放宽
 
 **不在本 change 范围内**：
 - 开放注册、邮箱验证、找回密码、第三方登录（LDAP / OAuth2）——仅预留 `AuthProvider` 抽象接口
@@ -33,8 +36,8 @@
 
 ## Impact
 
-- **后端新增**：`app/models/user.py`、`app/core/security.py`（哈希与令牌）、`app/services/auth.py`、`app/api/v1/{auth,users}.py`、`app/api/deps.py`（鉴权依赖）、Alembic 迁移（users 表）
-- **后端修改**：`app/core/config.py`（签名密钥、令牌有效期、Cookie 属性、登录限流阈值、初始管理员配置）、`app/api/v1/__init__.py`（挂载路由）、`app/main.py`（启动引导接线）、`.env.example`
+- **后端新增**：`app/models/user.py`、`app/core/security.py`（哈希与令牌）、`app/services/auth.py`、`app/api/v1/{auth,users}.py`、`app/api/v1/router.py`（v1 聚合器）、`app/api/deps.py`（鉴权依赖）、`app/schemas/` 下的账号与响应模型、Alembic 迁移（users 表）
+- **后端修改**：`app/core/config.py`（签名密钥强度、令牌有效期、Cookie 属性、限流阈值、初始管理员配置）、`app/models/base.py`（软删过滤与会话幂等）、`app/main.py`（挂载聚合器、启动引导）、`app/api/v1/health.py`（收敛到统一响应模型，形状不变）、`backend/tests/conftest.py` 与 `tests/test_env_isolation.py`（密钥占位值与断言）、`.env.example`
 - **依赖新增**：`pyjwt`、`pwdlib[argon2]`（`backend/pyproject.toml`）
 - **前端**：本 change **不改动**前端；`frontend-shell` 里注入式的刷新占位（`setTokenRefresher`）保持原状，直到 `frontend-auth-wiring` 接线
 - **OpenSpec**：新增 `specs/identity/`、`specs/authentication/`；同步修订 `openspec/project.md`
