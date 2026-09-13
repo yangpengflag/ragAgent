@@ -220,9 +220,12 @@ class AuthService:
         )
 
     # ---------------------------------------------------------------- 刷新
-    def refresh(self, session: Session, *, refresh_token: str | None) -> RefreshResult:
+    def refresh(
+        self, session: Session, *, refresh_token: str | None, client_host: str = "unknown"
+    ) -> RefreshResult:
         cfg = self._config
         if not refresh_token:
+            logger.warning("refresh rejected: no token", client=client_host)
             raise InvalidCredentialsError(_INVALID_CREDENTIALS_MESSAGE)
 
         try:
@@ -233,12 +236,21 @@ class AuthService:
                 algorithm=cfg.algorithm,
             )
         except TokenExpiredError:
+            logger.warning("refresh rejected: expired token", client=client_host)
             raise
         except AppError as exc:
+            logger.warning(
+                "refresh rejected: invalid token", client=client_host
+            )
             raise InvalidCredentialsError(_INVALID_CREDENTIALS_MESSAGE) from exc
 
         # 撤销名单不可用 → 异常冒泡为 503（fail-closed，design D9）
         if self._revocations.is_revoked(claims.jti):
+            logger.warning(
+                "refresh rejected: revoked jti",
+                account_id=str(claims.account_id),
+                client=client_host,
+            )
             raise InvalidCredentialsError(_INVALID_CREDENTIALS_MESSAGE)
 
         # 全局软删过滤使已删账号查不到 → 与"不存在"同路拒绝。
@@ -250,6 +262,7 @@ class AuthService:
             logger.warning(
                 "refresh rejected: account unavailable",
                 account_id=str(claims.account_id),
+                client=client_host,
             )
             raise InvalidCredentialsError(_INVALID_CREDENTIALS_MESSAGE)
 
@@ -259,6 +272,7 @@ class AuthService:
             logger.warning(
                 "refresh rejected: stale session epoch",
                 account_id=str(account.id),
+                client=client_host,
             )
             raise InvalidCredentialsError(_INVALID_CREDENTIALS_MESSAGE)
 
@@ -289,7 +303,9 @@ class AuthService:
         )
 
     # ---------------------------------------------------------------- 登出
-    def logout(self, *, refresh_token: str | None) -> LogoutInfo:
+    def logout(
+        self, *, refresh_token: str | None, client_host: str = "unknown"
+    ) -> LogoutInfo:
         """撤销当前 Cookie 携带的刷新令牌；幂等（spec：无令牌/无效令牌也成功）。
 
         撤销存储不可用 → 冒泡成 503（fail-closed）。
@@ -309,7 +325,7 @@ class AuthService:
 
         remaining = int(claims.expires_at.timestamp() - time.time())
         self._revocations.revoke(claims.jti, ttl_seconds=max(remaining, 1))
-        logger.info("logout", account_id=str(claims.account_id))
+        logger.info("logout", account_id=str(claims.account_id), client=client_host)
         return LogoutInfo(account_id=str(claims.account_id))
 
 

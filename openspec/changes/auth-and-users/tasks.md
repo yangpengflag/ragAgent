@@ -120,6 +120,12 @@
 - [x] 6.6 绿灯：实现 `auth` 路由（login / refresh / logout / me）并挂到 v1 聚合器
 
     > login / refresh / logout 已随 §5 落地（tasks §5 注记），本任务补 `me` 端点。
+    > 评审补记：spec「并发创建同一用户名」仅覆盖串行 409（依赖数据库唯一索引
+    > 兜底），真实并发创建验证归 §7 MySQL 联调。
+    > 评审补记：密码字段不再设 pydantic 长度约束——统一交
+    > `validate_password_strength`，保证 422 的 `details.rule` 标识覆盖
+    > too_short / too_long / same_as_username 全部三规则（含 >128 的
+    > `password_too_long`，原先被 Field 抢跑不可达）。
 - [x] 6.7 红灯：写测试——`users` 路由：创建 / 列表（分页信封、不含软删、无密码）/ 详情（不存在或已软删 404）/ 改显示名（空值 422、用户名不可改）/ 停用 / 启用 / 软删 / 重置密码；非管理员 403；用户名冲突 409；不合规密码 422
 - [x] 6.8 绿灯：实现 `users` 路由
 - [x] 6.9 红灯：写测试——最后一个已启用 `ADMIN` 不可被停用、软删或降级（409）；**并发**停用与降级时仍保留至少一个 `ADMIN`
@@ -127,12 +133,19 @@
 
     > 并发用串行化模拟验证（SQLite 忽略 FOR UPDATE，无法真实并发锁）：
     > 先后两次操作至少一次 409，且管理员保持启用。真实并发归 §7 MySQL 联调。
+    > 评审补记：guard 原先只锁"其他 ADMIN"行，两名 ADMIN 被并发各自降级存在
+    > 写偏斜窗口——写路径已改用 `SELECT ... FOR UPDATE` 取目标行（与计数锁
+    > 构成完整互斥），见 `user_service._get_for_update`。
 - [x] 6.11 红灯：写测试——审计日志：登录成功/失败、限流触发、刷新失败、登出、账号写操作均产生结构化日志且含 `request_id`；创建账号与重置密码的日志不含密码原文
 - [x] 6.12 绿灯：实现认证与账号管理审计日志
 
     > 结构化日志由 §5/§6 各服务点直接输出（structlog JSON），`request_id` 由
     > contextvar 处理器自动注入；密码不落日志有测试锁定（登录失败、创建账号、
     > 重置密码三条路径），令牌原文不出现在任何日志字段。
+    > 评审补记：刷新失败的 5 个分支（无 Cookie / 过期 / 签名或格式无效 /
+    > jti 已撤销 / 账号不可用 / 纪元失配）全部补齐告警日志；登出与账号写操作
+    > 日志补 `client` 来源字段（spec「认证事件审计」要求来源地址）；
+    > 审计断言集中在 `tests/test_audit_logs.py`（7 条）。
 - [x] 6.13 重构：路由层只声明参数与依赖，业务逻辑全部在 `services/`；错误码与 `api-conventions.md` 逐条对齐
 
     > 全部错误码核对：`unauthorized` / `token_expired` / `access_denied` /

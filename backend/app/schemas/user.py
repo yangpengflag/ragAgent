@@ -24,18 +24,21 @@ class AccountSummary(BaseModel):
 
 class CreateAccountRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
-    display_name: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=1, max_length=128)
+    # display_name 上限与模型列宽对齐（128）
+    display_name: str = Field(min_length=1, max_length=128)
+    # 密码不加 Field 长度约束：统一交给 validate_password_strength，
+    # 保证 422 的 details 永远携带 rule 标识（spec 要求），而非字段路径
+    password: str
     system_role: str = Field(default="MEMBER", pattern="^(ADMIN|MEMBER)$")
 
 
 class UpdateAccountRequest(BaseModel):
-    display_name: str | None = Field(default=None, min_length=1, max_length=64)
+    display_name: str | None = Field(default=None, min_length=1, max_length=128)
     system_role: str | None = Field(default=None, pattern="^(ADMIN|MEMBER)$")
 
 
 class ResetPasswordRequest(BaseModel):
-    new_password: str = Field(min_length=1, max_length=128)
+    new_password: str
 
 
 class ListQuery(BaseModel):

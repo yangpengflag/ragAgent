@@ -142,7 +142,9 @@ def refresh(
     settings = get_settings()
     token = request.cookies.get(settings.refresh_cookie_name)
     try:
-        result: RefreshResult = service.refresh(session, refresh_token=token)
+        result: RefreshResult = service.refresh(
+            session, refresh_token=token, client_host=_client_host(request)
+        )
     except (InvalidCredentialsError, TokenExpiredError) as exc:
         # 401 类失败：客户端的刷新令牌已不可用，清掉 Cookie 避免反复无效请求；
         # 503（撤销存储不可用）不清除——令牌仍有效，可稍后重试。
@@ -168,7 +170,10 @@ def logout(
     request_id: RequestIdDep,
 ) -> LogoutResponse:
     settings = get_settings()
-    service.logout(refresh_token=request.cookies.get(settings.refresh_cookie_name))
+    service.logout(
+        refresh_token=request.cookies.get(settings.refresh_cookie_name),
+        client_host=_client_host(request),
+    )
     _clear_refresh_cookie(response)
     return LogoutResponse(request_id=request_id)
 

@@ -51,6 +51,7 @@ def create_account(
     display_name: str,
     password: str,
     system_role: str = "MEMBER",
+    client_host: str = "unknown",
 ) -> Account:
     """创建账号；用户名冲突与弱密码分别转为 409 / 422。"""
     validate_password_strength(password, username=username)
@@ -72,6 +73,7 @@ def create_account(
         username=account.username,
         account_id=str(account.id),
         system_role=account.system_role,
+        client=client_host,
     )
     return account
 
@@ -102,15 +104,31 @@ def get_account(session: Session, account_id: uuid.UUID) -> Account:
     return account
 
 
+def _get_for_update(session: Session, account_id: uuid.UUID) -> Account:
+    """写路径取账号：`FOR UPDATE` 锁住目标行，与 guard 的计数锁构成完整互斥。
+
+    只锁"其他 ADMIN"不够——MySQL 下仅有的两名 ADMIN 被并发各自降级时，
+    双方都只锁到对方、计数都为 1，会双双成功（写偏斜）。锁住目标行后，
+    第二个请求会阻塞至第一个提交，再读到的状态已更新。
+    """
+    account = session.execute(
+        select(Account).where(Account.id == account_id).with_for_update()
+    ).scalar_one_or_none()
+    if account is None:
+        raise NotFoundError("账号不存在")
+    return account
+
+
 def update_account(
     session: Session,
     account_id: uuid.UUID,
     *,
     display_name: str | None = None,
     system_role: str | None = None,
+    client_host: str = "unknown",
 ) -> Account:
     """修改显示名与/或系统角色；用户名不可改（请求模型中根本没有该字段）。"""
-    account = get_account(session, account_id)
+    account = _get_for_update(session, account_id)
     if display_name is not None:
         account.display_name = display_name
     if system_role is not None and system_role != account.system_role:
@@ -124,15 +142,16 @@ def update_account(
         username=account.username,
         account_id=str(account.id),
         system_role=account.system_role,
+        client=client_host,
     )
     return account
 
 
 def set_account_active(
-    session: Session, account_id: uuid.UUID, *, active: bool
+    session: Session, account_id: uuid.UUID, *, active: bool, client_host: str = "unknown"
 ) -> Account:
     """停用 / 重新启用；停用走最后一个管理员保护。"""
-    account = get_account(session, account_id)
+    account = _get_for_update(session, account_id)
     if account.is_active == active:
         return account  # 幂等：重复停用/启用不再重复 bump 纪元
     if not active:
@@ -144,23 +163,37 @@ def set_account_active(
         "account activated" if active else "account deactivated",
         username=account.username,
         account_id=str(account.id),
+        client=client_host,
     )
     return account
 
 
-def soft_delete_account(session: Session, account_id: uuid.UUID) -> None:
+def soft_delete_account(
+    session: Session, account_id: uuid.UUID, *, client_host: str = "unknown"
+) -> None:
     """标记式删除；幂等（已删则直接返回）。"""
-    account = get_account(session, account_id)
+    account = _get_for_update(session, account_id)
     if account.deleted_at is not None:
         return
     _guard_not_last_active_admin(session, account)
     account.soft_delete()
     account.session_epoch += 1  # design D14：软删使既有刷新令牌失效
     session.commit()
-    logger.info("account deleted", username=account.username, account_id=str(account.id))
+    logger.info(
+        "account deleted",
+        username=account.username,
+        account_id=str(account.id),
+        client=client_host,
+    )
 
 
-def reset_password(session: Session, account_id: uuid.UUID, *, new_password: str) -> None:
+def reset_password(
+    session: Session,
+    account_id: uuid.UUID,
+    *,
+    new_password: str,
+    client_host: str = "unknown",
+) -> None:
     """管理员重置密码；受强度策略约束，成功后旧密码与既有刷新令牌立即失效。"""
     account = get_account(session, account_id)
     validate_password_strength(new_password, username=account.username)
@@ -169,5 +202,8 @@ def reset_password(session: Session, account_id: uuid.UUID, *, new_password: str
     session.commit()
     # 日志不含密码原文（审计要求 6.11）
     logger.info(
-        "account password reset", username=account.username, account_id=str(account.id)
+        "account password reset",
+        username=account.username,
+        account_id=str(account.id),
+        client=client_host,
     )

@@ -8,7 +8,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_request_id, require_role
@@ -34,6 +34,11 @@ SessionDep = Annotated[Session, Depends(get_db)]
 RequestIdDep = Annotated[str, Depends(current_request_id)]
 
 
+def _client_host(request: Request) -> str:
+    """审计日志用的来源地址（与登录限流同源：对端连接地址）。"""
+    return request.client.host if request.client else "unknown"
+
+
 def _to_summary(account: object) -> AccountSummary:
     return AccountSummary(
         id=str(account.id),  # type: ignore[attr-defined]
@@ -53,7 +58,10 @@ def _to_response(account: object) -> AccountResponse:
 
 @router.post("", status_code=201, response_model=AccountResponse)
 def create_account(
-    payload: CreateAccountRequest, session: SessionDep, request_id: RequestIdDep
+    payload: CreateAccountRequest,
+    session: SessionDep,
+    request: Request,
+    request_id: RequestIdDep,
 ) -> AccountResponse:
     account = user_service.create_account(
         session,
@@ -61,6 +69,7 @@ def create_account(
         display_name=payload.display_name,
         password=payload.password,
         system_role=payload.system_role,
+        client_host=_client_host(request),
     )
     response = _to_response(account)
     response.request_id = request_id
@@ -100,6 +109,7 @@ def update_account(
     account_id: uuid.UUID,
     payload: UpdateAccountRequest,
     session: SessionDep,
+    request: Request,
     request_id: RequestIdDep,
 ) -> AccountResponse:
     account = user_service.update_account(
@@ -107,6 +117,7 @@ def update_account(
         account_id,
         display_name=payload.display_name,
         system_role=payload.system_role,
+        client_host=_client_host(request),
     )
     response = _to_response(account)
     response.request_id = request_id
@@ -115,9 +126,11 @@ def update_account(
 
 @router.post("/{account_id}/deactivate", response_model=AccountResponse)
 def deactivate_account(
-    account_id: uuid.UUID, session: SessionDep, request_id: RequestIdDep
+    account_id: uuid.UUID, session: SessionDep, request: Request, request_id: RequestIdDep
 ) -> AccountResponse:
-    account = user_service.set_account_active(session, account_id, active=False)
+    account = user_service.set_account_active(
+        session, account_id, active=False, client_host=_client_host(request)
+    )
     response = _to_response(account)
     response.request_id = request_id
     return response
@@ -125,9 +138,11 @@ def deactivate_account(
 
 @router.post("/{account_id}/activate", response_model=AccountResponse)
 def activate_account(
-    account_id: uuid.UUID, session: SessionDep, request_id: RequestIdDep
+    account_id: uuid.UUID, session: SessionDep, request: Request, request_id: RequestIdDep
 ) -> AccountResponse:
-    account = user_service.set_account_active(session, account_id, active=True)
+    account = user_service.set_account_active(
+        session, account_id, active=True, client_host=_client_host(request)
+    )
     response = _to_response(account)
     response.request_id = request_id
     return response
@@ -135,10 +150,10 @@ def activate_account(
 
 @router.delete("/{account_id}", response_model=ApiResponse)
 def delete_account(
-    account_id: uuid.UUID, session: SessionDep, request_id: RequestIdDep
+    account_id: uuid.UUID, session: SessionDep, request: Request, request_id: RequestIdDep
 ) -> ApiResponse:
     """软删成功返回仅含 `request_id` 的确认（账号随后在列表/详情中不可见）。"""
-    user_service.soft_delete_account(session, account_id)
+    user_service.soft_delete_account(session, account_id, client_host=_client_host(request))
     return ApiResponse(request_id=request_id)
 
 
@@ -147,9 +162,15 @@ def reset_password(
     account_id: uuid.UUID,
     payload: ResetPasswordRequest,
     session: SessionDep,
+    request: Request,
     request_id: RequestIdDep,
 ) -> AccountResponse:
-    user_service.reset_password(session, account_id, new_password=payload.new_password)
+    user_service.reset_password(
+        session,
+        account_id,
+        new_password=payload.new_password,
+        client_host=_client_host(request),
+    )
     account = user_service.get_account(session, account_id)
     response = _to_response(account)
     response.request_id = request_id
