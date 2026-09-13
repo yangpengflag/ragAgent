@@ -4,7 +4,7 @@
 - [x] 1.2 红灯：写测试——构建命令可成功产出 `dist/`；类型检查无错误
 - [x] 1.3 绿灯：配置 `vite.config.ts`（dev 端口 5173）与 `tsconfig.json`（路径别名 `@/`）
 - [x] 1.4 初始化 Tailwind CSS 4 与全局样式，验证工具类生效
-- [x] 1.5 初始化 shadcn/ui（base-nova / neutral）与 lucide-react，确认基础组件生成于 `src/components/ui/` 且未被手改
+- [x] 1.5 初始化 shadcn/ui（base-nova / neutral）与 lucide-react，基础组件落于 `src/components/ui/`（**例外**：为适配 React 18 补 `forwardRef` / `displayName`，样式与结构保持原样，见 design.md Risks 与 spec R6 例外条款）
 - [x] 1.6 通过 `@fontsource` 引入 Inter 与 Plus Jakarta Sans，注入 `--font-sans` / `--font-heading` 变量
 - [x] 1.7 配置 lint（eslint + prettier）与 `npm run lint` / `typecheck` / `build` / `test` 脚本
 - [x] 1.8 编写 `frontend/.gitignore`（排除 `node_modules/`、`dist/`、`.env*.local`）与 `frontend/.env.example`（`VITE_API_BASE_URL`）
@@ -68,5 +68,5 @@
 - [x] 7.1 启动后端与前端，访问系统状态页，确认展示 MySQL / Redis / Milvus 三组件均为可用
 - [x] 7.2 停掉 Redis 容器后刷新页面，确认该组件显示为不可用并给出原因，其余仍可用
 - [x] 7.3 停掉后端后进入页面，确认显示 Error 态，点击重试可重新发起请求
-- [x] 7.4 复查：API 字段名与后端一致（snake_case）、图标全部来自 lucide-react、shadcn 组件未被手改
+- [x] 7.4 复查：API 字段名与后端一致（snake_case）、图标全部来自 lucide-react、shadcn 组件除 React 18 ref 适配外未被定制
 - [x] 7.5 更新 `AGENTS.md` 的前端目录与命令说明，提交变更

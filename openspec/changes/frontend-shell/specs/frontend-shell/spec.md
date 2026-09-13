@@ -108,7 +108,9 @@
 
 ### Requirement: 样式栈遵循项目样式规约
 
-系统 SHALL 使用 Tailwind CSS 4 + shadcn/ui（base-nova / neutral）+ lucide-react，且 MUST NOT 引入其它 UI 组件库（MUI / Chakra / Ant Design 等）或 CSS-in-JS 方案。shadcn/ui 生成的基础组件 MUST 不被手工修改。
+系统 SHALL 使用 Tailwind CSS 4 + shadcn/ui（base-nova / neutral）+ lucide-react，且 MUST NOT 引入其它 UI 组件库（MUI / Chakra / Ant Design 等）或 CSS-in-JS 方案。shadcn/ui 的基础组件 MUST 保持原始形态：MUST NOT 定制样式、MUST NOT 在其中加入业务逻辑。
+
+**允许的例外**：为适配 React 版本差异而补充 `forwardRef` / `displayName`。本项目运行在 React 18，而现行 shadcn/ui 源码按 React 19 的「`ref` 作为普通 prop」语义生成；不作该适配时，Radix 经 Portal / Slot 注入的 ref 会丢失（实测抽屉组件报 `Function components cannot be given refs`，焦点管理随之失效）。
 
 #### Scenario: 未引入其它 UI 库
 
@@ -119,3 +121,8 @@
 
 - **WHEN** 界面中使用图标
 - **THEN** 图标均来自 lucide-react
+
+#### Scenario: 基础组件仅做版本适配
+
+- **WHEN** 检查 `src/components/ui/` 下的基础组件
+- **THEN** 其样式与结构与 shadcn/ui 原始形态一致，仅存在为适配 React 版本所需的 `forwardRef` / `displayName` 差异，且不含业务逻辑
