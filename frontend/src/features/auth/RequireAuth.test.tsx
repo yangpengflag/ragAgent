@@ -6,29 +6,20 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { AppProviders } from "@/app/providers";
 import { AppRoutes } from "@/app/AppRoutes";
-import { API_BASE_URL } from "@/lib/api/client";
 import { resetSession } from "@/lib/api/session";
 import { useSessionStore } from "@/features/auth/session-store";
+import {
+  AUTH_URLS,
+  loginSuccessHandler,
+  meHandler,
+  refreshSuccessHandler,
+  refreshUnauthorizedHandler,
+} from "@tests/msw/handlers";
 import { server } from "@tests/msw/server";
-
-const REFRESH_URL = `${API_BASE_URL}/api/v1/auth/refresh`;
-const LOGIN_URL = `${API_BASE_URL}/api/v1/auth/login`;
-const ME_URL = `${API_BASE_URL}/api/v1/auth/me`;
 
 /** 无有效刷新令牌：引导以 401 结束 → 匿名 */
 function anonymousSession() {
-  server.use(
-    http.post(REFRESH_URL, () =>
-      HttpResponse.json(
-        {
-          request_id: "req-401",
-          error_code: "unauthorized",
-          message: "刷新令牌无效",
-        },
-        { status: 401 },
-      ),
-    ),
-  );
+  server.use(refreshUnauthorizedHandler);
 }
 
 /**
@@ -91,7 +82,7 @@ describe("路由守卫", () => {
     const gate = new Promise<Response>((resolve) => {
       openGate = resolve;
     });
-    server.use(http.post(REFRESH_URL, () => gate));
+    server.use(http.post(AUTH_URLS.refresh, () => gate));
     await renderApp("/chat");
 
     // 引导未完成时：既没有受保护内容，也不该已经跳到登录页
@@ -116,22 +107,7 @@ describe("路由守卫", () => {
 
   it("未登录访问受保护路由后完成登录：自动回到原目标", async () => {
     anonymousSession();
-    server.use(
-      http.post(LOGIN_URL, () =>
-        HttpResponse.json({
-          request_id: "req-login",
-          access_token: "access-1",
-          token_type: "Bearer",
-          expires_in: 900,
-          user: {
-            id: "01936b2a-0000-7000-8000-000000000001",
-            username: "admin",
-            display_name: "系统管理员",
-            system_role: "ADMIN",
-          },
-        }),
-      ),
-    );
+    server.use(loginSuccessHandler);
     const user = userEvent.setup();
     await renderApp("/chat");
 
@@ -149,27 +125,7 @@ describe("路由守卫", () => {
   });
 
   it("已登录访问受保护路由：正常渲染", async () => {
-    server.use(
-      http.post(REFRESH_URL, () =>
-        HttpResponse.json({
-          request_id: "req-r",
-          access_token: "access-1",
-          token_type: "Bearer",
-          expires_in: 900,
-        }),
-      ),
-      http.get(ME_URL, () =>
-        HttpResponse.json({
-          request_id: "req-m",
-          user: {
-            id: "01936b2a-0000-7000-8000-000000000001",
-            username: "admin",
-            display_name: "系统管理员",
-            system_role: "ADMIN",
-          },
-        }),
-      ),
-    );
+    server.use(refreshSuccessHandler, meHandler);
     await renderApp("/chat");
 
     expect(await screen.findByText("功能建设中")).toBeInTheDocument();
