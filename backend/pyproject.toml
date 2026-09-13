@@ -16,6 +16,10 @@ dependencies = [
     "structlog>=24.4",
     "pyjwt>=2.9",
     "pwdlib[argon2]>=0.2",
+    "langchain-core>=1.6.3,<1.7",
+    "langchain-openai>=1.6.2,<1.7",
+    "langchain-milvus>=0.4.0,<0.5",
+    "langsmith>=0.12.4,<0.13",
 ]
 
 [dependency-groups]
