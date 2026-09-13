@@ -72,7 +72,7 @@
 
 系统 SHALL 提供 `POST /api/v1/auth/refresh`，从 `HttpOnly` Cookie 读取刷新令牌并签发新的访问令牌。刷新令牌 MUST 只从 Cookie 读取——请求体或查询参数中出现的刷新令牌 MUST NOT 被采纳。刷新成功时 MUST 轮换刷新令牌，原刷新令牌随即失效。
 
-刷新 MUST 同时校验：签名有效、未过期、`jti` 未被撤销、**账号当前存在且启用**、且令牌签发时间不早于该账号的会话纪元（见「凭据变更或停用即时失效」）。任一项不满足 MUST 返回 401 `unauthorized` 并清除刷新令牌 Cookie。
+刷新 MUST 同时校验：签名有效、未过期、`jti` 未被撤销、**账号当前存在且启用**、且令牌签发时间不早于该账号的会话纪元（见「凭据变更或停用即时失效」）。任一项不满足 MUST 返回 401 并清除刷新令牌 Cookie；其中**令牌已过期**返回 `token_expired`（与访问令牌的过期语义一致，便于客户端识别），其余情形返回 `unauthorized`。
 
 响应体字段名为：`request_id`、`access_token`、`token_type`、`expires_in`（MUST NOT 返回 `user`——账号信息由 `GET /api/v1/auth/me` 提供）。
 

@@ -46,6 +46,7 @@ def _bootstrap_initial_admin() -> None:
     from sqlalchemy import text
 
     from app.core.db import get_session_factory
+    from app.core.security import PasswordPolicyError
     from app.services.auth_service import bootstrap_admin
 
     settings = load_settings()
@@ -66,6 +67,11 @@ def _bootstrap_initial_admin() -> None:
             bootstrap_session,
             username=settings.bootstrap_admin_username,
             password=settings.bootstrap_admin_password,
+        )
+    except PasswordPolicyError:
+        # 引导密码不符合强度策略：告警并跳过，不阻断启动（与上方"不阻断"注释一致）
+        _logger.warning(
+            "bootstrap admin skipped: configured password violates strength policy"
         )
     finally:
         bootstrap_session.close()

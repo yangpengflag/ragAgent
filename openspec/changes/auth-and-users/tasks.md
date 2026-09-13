@@ -100,6 +100,15 @@
     > - 测试基建坑：内存 SQLite 必须用 `StaticPool` 共享单连接，否则 TestClient
     >   的请求线程拿到独立空库；dependency_overrides 的替身必须单例，否则
     >   每请求重建导致计数状态丢失。
+    > - 评审补记（§5 复审后落地）：① 拉黑 TTL 修正为**剩余寿命**（原先误算全寿命，
+    >   偏保守但浪费 Redis 内存）；② spec 修订——刷新时令牌**已过期**返回
+    >   `token_expired`（与访问令牌语义一致，前端可识别），其余 401 情形仍为
+    >   `unauthorized`；③ 三处无 spec 字面依据的合理增强：Redis 客户端 2s 超时、
+    >   `request.client` 缺失时限流键退化为 `unknown`、引导密码受强度策略约束
+    >   （lifespan 捕获 `PasswordPolicyError` 告警跳过，不阻断启动）。
+    > - FastAPI 坑：路由中 raise 异常会丢弃 Response 参数上的 Cookie 变更——
+    >   刷新 401 清 Cookie 必须手工构造错误响应并直接返回
+    >   （`error_handlers.app_error_response` 公共 helper）。
 
 ## 6. 鉴权依赖与路由
 

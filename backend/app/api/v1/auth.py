@@ -12,11 +12,13 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_request_id, get_auth_service
 from app.core.config import get_settings
 from app.core.db import get_db
+from app.core.error_handlers import app_error_response
 from app.core.exceptions import AccessDeniedError, TokenExpiredError
 from app.schemas.auth import (
     LoginRequest,
@@ -62,6 +64,11 @@ def _clear_refresh_cookie(response: Response) -> None:
     response.delete_cookie(
         key=settings.refresh_cookie_name, path=settings.refresh_cookie_path
     )
+
+
+def _clear_cookie_on(response: Response) -> None:
+    """同 `_clear_refresh_cookie`，但可直接用于手工构造的错误响应。"""
+    _clear_refresh_cookie(response)
 
 
 def _allowed_origins() -> list[str]:
@@ -128,18 +135,21 @@ def refresh(
     session: SessionDep,
     service: AuthServiceDep,
     request_id: RequestIdDep,
-) -> RefreshResponse:
+) -> RefreshResponse | JSONResponse:
     _enforce_allowed_origin(request)
 
     settings = get_settings()
     token = request.cookies.get(settings.refresh_cookie_name)
     try:
         result: RefreshResult = service.refresh(session, refresh_token=token)
-    except (InvalidCredentialsError, TokenExpiredError):
+    except (InvalidCredentialsError, TokenExpiredError) as exc:
         # 401 类失败：客户端的刷新令牌已不可用，清掉 Cookie 避免反复无效请求；
-        # 503（撤销存储不可用）不清除——令牌仍有效，可稍后重试
-        _clear_refresh_cookie(response)
-        raise
+        # 503（撤销存储不可用）不清除——令牌仍有效，可稍后重试。
+        # 注意：错误响应必须"自己构造并返回"，且 Cookie 直接挂在它身上——
+        # 无论是 raise 还是改 Response 参数，Cookie 变更都会被 FastAPI 丢弃。
+        error = app_error_response(request, exc)
+        _clear_cookie_on(error)
+        return error
     _set_refresh_cookie(response, result.refresh_token)
     return RefreshResponse(
         request_id=request_id,

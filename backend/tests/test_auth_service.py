@@ -434,6 +434,26 @@ class TestStorageFailureModes:
         assert result.access_token
         assert "rate limit" in capsys.readouterr().out.lower()
 
+    def test_revocation_store_down_fails_logout_closed(
+        self, sqlite_session: Session, account: Account
+    ) -> None:
+        """spec 场景「撤销存储不可用时拒绝登出」：503 upstream_unavailable。
+
+        必须用**有效**刷新令牌——垃圾令牌在 decode 阶段就幂等返回，触不到撤销存储。
+        """
+        login = AuthService(
+            InMemoryRevocationStore(), InMemoryRateLimitStore(), make_config()
+        ).login(
+            sqlite_session, username=account.username, password=PASSWORD,
+            client_host="10.0.0.1",
+        )
+        service = AuthService(_FailingRevocations(), InMemoryRateLimitStore(),
+                              make_config())
+        with pytest.raises(StoreUnavailableError) as exc_info:
+            service.logout(refresh_token=login.refresh_token)
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.error_code == ErrorCode.UPSTREAM_UNAVAILABLE
+
     def test_rate_limit_store_down_still_fails_on_bad_credentials(
         self, sqlite_session: Session, account: Account
     ) -> None:

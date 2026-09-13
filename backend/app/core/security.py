@@ -153,7 +153,7 @@ def _decode(
         # 互不可替代：拿访问令牌当刷新令牌用（或反之）一律拒绝
         raise TokenClaimsError("令牌类型不符")
 
-    missing = [key for key in ("sub", "jti") if key not in payload]
+    missing = [key for key in ("sub", "jti", "iat", "exp") if key not in payload]
     if missing:
         raise TokenClaimsError(f"令牌缺少必需声明: {', '.join(missing)}")
     return payload
@@ -166,7 +166,11 @@ def _to_claims(
     system_role_required: bool,
     epoch_required: bool,
 ) -> TokenClaims:
-    account_id = uuid.UUID(str(payload["sub"]))
+    try:
+        account_id = uuid.UUID(str(payload["sub"]))
+    except ValueError as exc:
+        # sub 非法但签名有效——仍属"格式非法"，必须 401 而非 500
+        raise TokenClaimsError("令牌主体声明非法") from exc
     iat_raw = payload["iat"]
     exp_raw = payload["exp"]
     if not isinstance(iat_raw, int) or not isinstance(exp_raw, int):

@@ -84,6 +84,7 @@ class TestLoginContract:
         set_cookie = response.headers["set-cookie"]
         assert "httponly" in set_cookie.lower()
         assert "path=/api/v1/auth" in set_cookie.lower()
+        assert "samesite=lax" in set_cookie.lower()
 
     def test_invalid_credentials_same_message(
         self, client: TestClient, account: Account
@@ -117,6 +118,20 @@ class TestRefreshContract:
     ) -> None:
         response = client.post("/api/v1/auth/refresh")
         assert response.status_code == 401
+
+    def test_refresh_rejection_clears_cookie(
+        self, client: TestClient, sqlite_session: Session, account: Account
+    ) -> None:
+        """spec：五项校验任一不满足 → 401 且清除刷新令牌 Cookie。"""
+        assert _login(client).status_code == 200
+        account.is_active = False
+        sqlite_session.commit()
+
+        response = client.post("/api/v1/auth/refresh")
+
+        assert response.status_code == 401
+        set_cookie = response.headers["set-cookie"].lower()
+        assert "max-age=0" in set_cookie or "expires=" in set_cookie
 
     def test_refresh_token_in_body_is_not_accepted(
         self, client: TestClient

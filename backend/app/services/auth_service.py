@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Final
 from urllib.parse import urlparse
@@ -261,12 +262,10 @@ class AuthService:
             )
             raise InvalidCredentialsError(_INVALID_CREDENTIALS_MESSAGE)
 
-        # 轮换：拉黑旧 jti（剩余寿命），签发新 jti。
+        # 轮换：拉黑旧 jti（TTL = 剩余寿命），签发新 jti。
         # 拉黑失败必须整体失败（design D4 的代价条款）——异常继续冒泡成 503。
-        lifetime_left = int(
-            claims.expires_at.timestamp() - claims.issued_at.timestamp()
-        )
-        self._revocations.revoke(claims.jti, ttl_seconds=max(lifetime_left, 1))
+        remaining = int(claims.expires_at.timestamp() - time.time())
+        self._revocations.revoke(claims.jti, ttl_seconds=max(remaining, 1))
 
         access_token = create_access_token(
             account_id=account.id,
@@ -308,10 +307,8 @@ class AuthService:
             # 无法解析的令牌谈不上撤销；幂等返回成功
             return LogoutInfo(account_id=None)
 
-        lifetime_left = int(
-            claims.expires_at.timestamp() - claims.issued_at.timestamp()
-        )
-        self._revocations.revoke(claims.jti, ttl_seconds=max(lifetime_left, 1))
+        remaining = int(claims.expires_at.timestamp() - time.time())
+        self._revocations.revoke(claims.jti, ttl_seconds=max(remaining, 1))
         logger.info("logout", account_id=str(claims.account_id))
         return LogoutInfo(account_id=str(claims.account_id))
 

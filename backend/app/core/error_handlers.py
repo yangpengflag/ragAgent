@@ -74,21 +74,31 @@ def _json(request: Request, status_code: int, payload: dict[str, Any]) -> JSONRe
     return response
 
 
+def app_error_response(request: Request, exc: AppError) -> JSONResponse:
+    """把 AppError 转为统一错误信封响应。
+
+    独立成公共 helper：路由需要在**返回前**附加 Cookie 变更等副作用时，
+    直接调用它而不是 raise——异常一旦传播，FastAPI 会丢弃路由的 Response
+    参数上已做的修改（如清除刷新令牌 Cookie）。
+    """
+    return _json(
+        request,
+        exc.status_code,
+        _envelope(
+            request,
+            error_code=exc.error_code,
+            message=exc.message,
+            details=exc.details,
+        ),
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """注册 AppError / 校验失败 / 未预期异常三类处理器。"""
 
     @app.exception_handler(AppError)
     async def _handle_app_error(request: Request, exc: AppError) -> JSONResponse:
-        return _json(
-            request,
-            exc.status_code,
-            _envelope(
-                request,
-                error_code=exc.error_code,
-                message=exc.message,
-                details=exc.details,
-            ),
-        )
+        return app_error_response(request, exc)
 
     @app.exception_handler(StarletteHTTPException)
     async def _handle_http_exception(
