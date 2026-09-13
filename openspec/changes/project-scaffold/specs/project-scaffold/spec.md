@@ -30,7 +30,7 @@
 
 ### Requirement: 每个请求携带唯一 request_id
 
-系统 SHALL 为每个进入的 HTTP 请求确定唯一 `request_id`：若请求头 `X-Request-ID`（大小写不敏感）已携带非空值则沿用，否则生成新的唯一值。该 `request_id` MUST 同时出现在：该请求产生的所有日志条目中、响应的 `X-Request-ID` 响应头中、以及响应体中（成功与错误响应均包含）。
+系统 SHALL 为每个进入的 HTTP 请求确定唯一 `request_id`：若请求头 `X-Request-ID`（大小写不敏感）已携带**合法**非空值则沿用，否则生成新的唯一值。合法值 MUST 限定字符集与长度（仅字母、数字与 `._:-`，长度不超过 128），以避免响应头/日志注入与日志膨胀。该 `request_id` MUST 同时出现在：该请求产生的所有日志条目中、响应的 `X-Request-ID` 响应头中、以及响应体中（成功与错误响应均包含）。
 
 #### Scenario: 自动生成 request_id
 
@@ -46,6 +46,11 @@
 
 - **WHEN** 客户端携带 `x-request-id: abc-123`（小写）
 - **THEN** 系统同样沿用该值
+
+#### Scenario: 非法上游值被丢弃
+
+- **WHEN** 客户端携带含空格、控制字符或超长（>128）的 `X-Request-ID`
+- **THEN** 系统不沿用该值，改为生成新的合法 `request_id`
 
 ### Requirement: 日志结构化且不含敏感信息
 
@@ -121,7 +126,7 @@
 
 系统 SHALL 提供健康检查端点 `GET /api/v1/health`，返回结构化结果，包含 `request_id`、整体状态与 `components` 明细。整体状态 MUST 取值为 `ok`（全部组件可用）或 `degraded`（存在不可用组件）。`components` 中每一项 MUST 至少包含该组件的 `status`（`ok` 或 `down`）与 `error`（不可用时给出原因，可用时为 null）。
 
-系统 MUST 分别探测 MySQL、Redis、Milvus 的连通性。当某个依赖不可用时，端点 MUST 仍返回 HTTP 200，并在 `components` 中标注。探测 MUST 设置超时，不得因某个依赖无响应而长时间挂起。
+系统 MUST 分别探测 MySQL、Redis、Milvus 的连通性。当某个依赖不可用时，端点 MUST 仍返回 HTTP 200，并在 `components` 中标注。探测 MUST 设置超时，不得因某个依赖无响应而长时间挂起——即底层客户端自身重试不可控（如 Milvus SDK 连接重试无上限、redis-py 默认重试会把超时放大数倍）时，也 MUST 由探针层保证按时返回，且 MUST NOT 因此产生无界的线程/连接累积。
 
 #### Scenario: 全部依赖正常
 

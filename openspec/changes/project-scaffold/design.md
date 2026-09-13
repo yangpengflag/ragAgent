@@ -62,7 +62,7 @@
 
 ### D4. `request_id`：头名 `X-Request-ID`，头体双写，contextvar 透传
 
-**选择**：HTTP 中间件从 `X-Request-ID`（大小写不敏感）读取，缺失则生成；写入 contextvar 供日志使用；出站**同时**写入响应头 `X-Request-ID` 与响应体 `request_id` 字段。
+**选择**：HTTP 中间件从 `X-Request-ID`（大小写不敏感）读取，缺失则生成；写入 contextvar 供日志使用；出站**同时**写入响应头 `X-Request-ID` 与响应体 `request_id` 字段。上游值 MUST 通过字符集与长度白名单（`[A-Za-z0-9._:-]{1,128}`），不合法则丢弃并重新生成——防响应头/日志注入与超长值膨胀每条日志。此外，中间件同时把 id 落到 `request.state`：异常路径下 contextvar 已被 reset，外层 `ServerErrorMiddleware` 仍需据此补回响应头与信封字段。
 
 **备选**：① 只放响应头 —— 排障时前端与日志聚合拿不到；② 不定义头名 —— 上下游无法对齐。
 
@@ -78,9 +78,15 @@
 
 ### D6. 错误信封：全局异常处理器 + 精简异常层次
 
-**选择**：`AppError`（携带 `status_code` 与 `error_code`）+ 本 change 实际用到的 `NotFoundError`；注册三类处理器（`AppError`、`RequestValidationError`、`Exception`）。错误码常量只定义实际用到的三个（`not_found` / `validation_error` / `internal_error`），其余随业务 change 增量添加。
+**选择**：`AppError`（携带 `status_code` 与 `error_code`）+ 本 change 实际用到的 `NotFoundError`；注册五类处理器——`AppError`、`StarletteHTTPException`、`FastAPIHTTPException`、`RequestValidationError`、`Exception`。
 
-**备选**：每个路由 try/except 后返回 JSONResponse —— 重复代码且易漏；全量定义 10 个错误码常量 —— 骨架期零消费者。
+- **框架异常也必须走统一信封**：未知路由的 404 由 Starlette 的 `HTTPException` 抛出，若不注册处理器会返回裸 `{"detail": "Not Found"}`；`fastapi.HTTPException` 是 Starlette 的子类且会被 FastAPI 内置处理器抢先，故两者都要注册。
+- **状态码与错误码必须一致**：映射与 `api-conventions.md` 的错误码表逐条对齐（400 `bad_request`、401 `unauthorized`、403 `access_denied`、404 `not_found`、405 `method_not_allowed`、409 `conflict`、413 `file_too_large`、415 `unsupported_file_type`、422 `validation_error`、429 `rate_limited`、503 `upstream_unavailable`），未列出的状态码按 4xx→`bad_request` / 5xx→`internal_error` 兜底。注意 **503 不能给 `internal_error`**——上游熔断被当成服务端 bug 会误导排查。
+- **不传 `debug=True` 给 `FastAPI`**：Starlette 在 debug 模式下会用 traceback 响应绕过全部自定义处理器（既泄漏堆栈，也丢失 `X-Request-ID`）。
+
+**备选**：每个路由 try/except 后返回 JSONResponse —— 重复代码且易漏；把错误码写成散落字面量 —— 会丢掉"错误码需为语义化 snake_case 标识"的单点定义。
+
+> 关于常量的数量：`ErrorCode` 目前有 12 个，看似超出"只定义用到的"，但**状态码→错误码映射表（`_ERROR_CODE_BY_STATUS`）本身就是它们的消费者**——映射必须与 `api-conventions.md` 的错误码表逐条对齐，因此这 12 个常量属必要定义，不是预防性铺开。
 
 ### D7. 数据访问：UUID v7 + BINARY(16) + 应用层 UTC，软删只提供字段
 
@@ -123,7 +129,8 @@
 - **测试替身基建**（`conftest.py`）在建工程阶段就提供：配置隔离 fixture、探针三态 fixture（healthy / unhealthy / hang）
 - **HTTP 测试**：统一使用 `TestClient(create_app())`，依赖 `httpx`（显式加入测试依赖）
 - **数据库行为测试**：mixin 行为用 **SQLite 内存库 + `create_all`** 验证（见 D7），不落 MySQL
-- **迁移测试**：使用独立 `ragagent_test` 库，前置 `drop/create database`、后置 `alembic downgrade base` 清理；**不使用事务回滚**——MySQL DDL 隐式提交，事务回滚对迁移无效
+- **迁移测试**：使用独立 `ragagent_test` 库，前置 `drop/create database`，后置 `alembic downgrade base` + `drop database`（跑完不残留）；**不使用事务回滚**——MySQL DDL 隐式提交，事务回滚对迁移无效。另断言 `ScriptDirectory.get_heads()` 唯一
+- **测试自洽**：session 级 autouse fixture 为缺失的必填配置注入占位值，使套件在**没有仓库根 `.env`** 的机器上也能全绿（spec R8）；断言取值一律取自配置而非硬编码
 - 外部服务（DashScope / MinerU / Redis / Milvus）在单元测试中一律由替身替代
 
 **备选**：直接连开发库跑测试 —— 污染数据且不可重复；迁移测试用事务回滚 —— 在 MySQL 上不成立。
@@ -142,12 +149,14 @@
 ## Risks / Trade-offs
 
 - **`BINARY(16)` 在 SQLite 上的兼容性** → 自定义 TypeDecorator 通过 `load_dialect_impl` 回退为 `CHAR(32)`；若回退实现有坑，退路是 mixin 测试改用 MySQL `ragagent_test`（需先建测试模型表）。
-- **UUID v7 自实现的正确性** → 只需保证"时间有序 + 全局唯一"两点，实现约 20 行并配单测（同毫秒内递增、跨毫秒递增、不重复）。
+- **UUID v7 自实现的正确性** → 保证"时间有序 + 全局唯一"两点：低 74 位为纯随机，**同毫秒内不保证递增**（对索引局部性无影响），故单测只断言跨毫秒递增与不重复。
 - **structlog 配置有一定学习成本** → 集中在单模块内配置，业务代码只用 `get_logger()`。
 - **UUID 存 BINARY(16) 可读性差** → 当前不提供互转工具（无消费者）；首个业务实体 change 再补，届时一并处理日志 hex 输出。
 - **空迁移与"downgrade 不得为空实现"规约冲突** → 首个迁移无表可建，作为**唯一例外**在此记录：`downgrade()` 为空实现是合理的（无对象可删）；迁移测试改为验证 Alembic 接线可用（`alembic_version` 版本推进/回退、`heads` 唯一），而非断言建表行为。
 - **健康检查探测引入额外连接开销** → 探测超时 2s 且只做最小操作，开销可忽略。
-- **Milvus 客户端初始化较慢** → 惰性初始化 + 显式超时；本 change 只探测连接，不建 collection。
+- **底层客户端的重试不可控**（实测：Milvus SDK 不可达时挂 40s+；redis-py 8.1 默认重试把 2s 连接超时放大到 26s）→ 两层对策：① Redis 探针显式 `Retry(NoBackoff(), 0)` + `retry_on_error=[]`；② Milvus 探针在**守护线程**中执行并以 `Event.wait(timeout)` 硬性兜底。用守护线程而非 `ThreadPoolExecutor`：后者工作线程为非守护线程，解释器退出时会被 join 而卡住进程。
+- **在飞状态的三个边界必须处理**（Milvus 探针）：① 并发限制用**实例级**状态而非模块级全局（避免跨实例/跨用例污染，且可测试）；② 状态带时间戳，超过陈旧窗口（`max(5×timeout, 30s)`）允许接管——否则一次卡死会让 Milvus 永久判 down、失去恢复能力；③ `Thread.start()` 失败时必须释放标记并以 down 返回，否则既抛 500（违反 R7）又永久污染状态。worker 线程内先释放标记、再唤醒调用方，避免调用方被唤醒后仍看到"在飞"而误判。
+- **`ALEMBIC_TARGET` 误配会打到开发库** → `alembic/env.py` 内加守卫：声明 `test` 时若解析出的库名不以 `_test` 结尾则直接 `RuntimeError`；测试侧另行断言解析结果确为 `ragagent_test`。
 - **Milvus 容器可能"孤儿化"**（`project.md` 已记已知坑）→ 真机验证前确认 `docker ps` 中 standalone 为 healthy；异常时用 `docker compose up -d --force-recreate standalone` 修复。
 - **C 盘空间紧张** → `.venv` 建在 `backend/`（D 盘工作区），uv 缓存指向 `D:\uv-cache`；工程初始化时明确验收 `uv cache dir` 输出以 `D:` 开头。
 - **mypy 非 strict 会放过部分类型问题** → 记录在案，随后续 change 逐步收紧。

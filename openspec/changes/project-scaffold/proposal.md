@@ -9,8 +9,8 @@
 **环境准备（一次性基建，非应用运行时行为）**
 
 - 由 `.env.example` 复制出仓库根 `.env` 并按本机环境填写
-- 创建 MySQL 库 `ekb`（开发）与 `ekb_test`（测试），若不存在则创建
-- 幂等创建 Milvus database `ekb`（项目级隔离单元）
+- 创建 MySQL 库 `ragagent`（开发）与 `ragagent_test`（测试），若不存在则创建
+- 幂等创建 Milvus database `ragagent`（项目级隔离单元）
 
 **后端工程**
 
@@ -46,8 +46,8 @@
 - **新增目录/文件**：`backend/`（`app/`、`tests/`、`alembic/`、`pyproject.toml`、`uv.lock`、`README.md`）
 - **依赖引入**：`fastapi`、`uvicorn`、`httpx`（测试）、`pydantic-settings`、`sqlalchemy`、`alembic`、`pymysql`、`redis`、`pymilvus`、`structlog`、`pytest`、`pytest-asyncio`、`ruff`、`mypy`
 - **外部系统**：
-  - MySQL：创建 `ekb` / `ekb_test` 两个库（一次性准备）
-  - Milvus：幂等创建 database `ekb`（一次性准备，本 change 唯一的一次性写操作）
+  - MySQL：创建 `ragagent` / `ragagent_test` 两个库（一次性准备）
+  - Milvus：幂等创建 database `ragagent`（一次性准备，本 change 唯一的一次性写操作）
   - 运行时只读探测 MySQL / Redis / Milvus，不建业务表
 - **配置**：依赖仓库根 `.env`（由 `.env.example` 复制）；新增变量需同步 `.env.example`
 - **后续影响**：所有后续 change 的路由、service、Celery 任务均复用本骨架的配置、日志、错误处理与数据库会话

@@ -44,44 +44,44 @@
 
 ## 4. 统一错误信封
 
-- [ ] 4.1 红灯：写测试——测试路由抛出资源不存在异常时返回 404，`error_code` 为 `not_found`，响应含 `request_id`
-- [ ] 4.2 绿灯：定义 `AppError` 与 `NotFoundError`，注册 `AppError` 处理器，并挂一条测试路由
-- [ ] 4.3 红灯：写测试——参数校验失败返回 422、`error_code` 为 `validation_error`、`details` 含字段级信息
-- [ ] 4.4 绿灯：注册 `RequestValidationError` 处理器
-- [ ] 4.5 红灯：写测试——未预期异常返回 500、`error_code` 为 `internal_error`、响应不含堆栈
-- [ ] 4.6 绿灯：注册通用 `Exception` 处理器，堆栈只写日志
-- [ ] 4.7 重构：只抽取实际用到的三个错误码常量，移除测试路由或收敛到测试专用 app
-- [ ] 4.8 回归：确保**未处理异常**的响应也带 `X-Request-ID` 响应头（当前 `RequestIdMiddleware` 仅在正常路径写回，异常由外层 `ServerErrorMiddleware` 生成 500，会丢失该头）
+- [x] 4.1 红灯：写测试——测试路由抛出资源不存在异常时返回 404，`error_code` 为 `not_found`，响应含 `request_id`
+- [x] 4.2 绿灯：定义 `AppError` 与 `NotFoundError`，注册 `AppError` 处理器，并挂一条测试路由
+- [x] 4.3 红灯：写测试——参数校验失败返回 422、`error_code` 为 `validation_error`、`details` 含字段级信息
+- [x] 4.4 绿灯：注册 `RequestValidationError` 处理器
+- [x] 4.5 红灯：写测试——未预期异常返回 500、`error_code` 为 `internal_error`、响应不含堆栈
+- [x] 4.6 绿灯：注册通用 `Exception` 处理器，堆栈只写日志
+- [x] 4.7 重构：只抽取实际用到的三个错误码常量，移除测试路由或收敛到测试专用 app
+- [x] 4.8 回归：确保**未处理异常**的响应也带 `X-Request-ID` 响应头（当前 `RequestIdMiddleware` 仅在正常路径写回，异常由外层 `ServerErrorMiddleware` 生成 500，会丢失该头）
 
 ## 5. 数据库骨架与迁移
 
-- [ ] 5.1 红灯：写测试——在 SQLite 内存库上 `create_all` 建测试模型：插入后主键/创建时间/更新时间自动填充且软删标记为空；更新后创建时间不变、更新时间变晚；执行 `soft_delete()` 后行仍在且 `deleted_at` 非空
-- [ ] 5.2 绿灯：实现 `models/base.py`——公共 mixin（UUID v7 主键 default、BINARY(16) TypeDecorator 带 SQLite 回退、`created_at` 无 `onupdate`、`updated_at`、`deleted_at`、`soft_delete()`）
-- [ ] 5.3 红灯：写测试——`get_db` 在正常与异常路径下均关闭会话
-- [ ] 5.4 绿灯：实现 `core/db.py`——engine（QueuePool + 预检）、sessionmaker、`get_db` 依赖
-- [ ] 5.5 初始化 Alembic，`env.py` 读取统一配置中的数据库 URL
-- [ ] 5.6 准备迁移测试环境：`ragagent_test` 库执行 `drop/create database`
-- [ ] 5.7 红灯：写测试——连续两次 upgrade 为幂等操作；`downgrade base` 后 `alembic_version` 清空；`heads` 唯一
-- [ ] 5.8 绿灯：生成首个迁移（空迁移，仅建立版本基线；`downgrade()` 为空实现，作为规约唯一例外记录在 `design.md`）
-- [ ] 5.9 重构：时间统一由应用层以 `datetime.now(timezone.utc)` 生成，禁止 `func.now()` / `CURRENT_TIMESTAMP` / `datetime.now()`
+- [x] 5.1 红灯：写测试——在 SQLite 内存库上 `create_all` 建测试模型：插入后主键/创建时间/更新时间自动填充且软删标记为空；更新后创建时间不变、更新时间变晚；执行 `soft_delete()` 后行仍在且 `deleted_at` 非空
+- [x] 5.2 绿灯：实现 `models/base.py`——公共 mixin（UUID v7 主键 default、BINARY(16) TypeDecorator 带 SQLite 回退、`created_at` 无 `onupdate`、`updated_at`、`deleted_at`、`soft_delete()`）
+- [x] 5.3 红灯：写测试——`get_db` 在正常与异常路径下均关闭会话
+- [x] 5.4 绿灯：实现 `core/db.py`——engine（QueuePool + 预检）、sessionmaker、`get_db` 依赖
+- [x] 5.5 初始化 Alembic，`env.py` 读取统一配置中的数据库 URL
+- [x] 5.6 准备迁移测试环境：`ragagent_test` 库执行 `drop/create database`
+- [x] 5.7 红灯：写测试——连续两次 upgrade 为幂等操作；`downgrade base` 后 `alembic_version` 清空；`heads` 唯一
+- [x] 5.8 绿灯：生成首个迁移（空迁移，仅建立版本基线；`downgrade()` 为空实现，作为规约唯一例外记录在 `design.md`）
+- [x] 5.9 重构：时间统一由应用层以 `datetime.now(timezone.utc)` 生成，禁止 `func.now()` / `CURRENT_TIMESTAMP` / `datetime.now()`
 
 ## 6. 健康检查端点
 
-- [ ] 6.0 红灯：写测试——定义探针接口（返回组件状态），并断言健康检查编排层只依赖该接口、不直接构造客户端
-- [ ] 6.1 绿灯：实现探针接口与编排层
-- [ ] 6.2 红灯：写测试——注入三态探针：全部可用 → 200 且 `status` 为 `ok`；Milvus 不可用 → 仍 200、`status` 为 `degraded`、Milvus `status` 为 `down` 且 `error` 有原因；探针超时 → 该组件标 `down` 且附带超时原因
-- [ ] 6.3 绿灯：实现 `GET /api/v1/health` 与响应模型（`response_model` + `summary` + `tags`，契约见 `design.md` D8）
-- [ ] 6.4 红灯：写测试——真实探针（MySQL `SELECT 1` / Redis `PING` / Milvus 连接 `ragagent`）在目标不可达时于超时内返回 `down`
-- [ ] 6.5 绿灯：实现三个真实探针并落到 `integrations/`，各自显式设置超时
-- [ ] 6.6 重构：编排层收敛为薄函数，探针实现与编排分离
+- [x] 6.0 红灯：写测试——定义探针接口（返回组件状态），并断言健康检查编排层只依赖该接口、不直接构造客户端
+- [x] 6.1 绿灯：实现探针接口与编排层
+- [x] 6.2 红灯：写测试——注入三态探针：全部可用 → 200 且 `status` 为 `ok`；Milvus 不可用 → 仍 200、`status` 为 `degraded`、Milvus `status` 为 `down` 且 `error` 有原因；探针超时 → 该组件标 `down` 且附带超时原因
+- [x] 6.3 绿灯：实现 `GET /api/v1/health` 与响应模型（`response_model` + `summary` + `tags`，契约见 `design.md` D8）
+- [x] 6.4 红灯：写测试——真实探针（MySQL `SELECT 1` / Redis `PING` / Milvus 连接 `ragagent`）在目标不可达时于超时内返回 `down`
+- [x] 6.5 绿灯：实现三个真实探针并落到 `integrations/`，各自显式设置超时
+- [x] 6.6 重构：编排层收敛为薄函数，探针实现与编排分离
 
 ## 7. 应用装配与集成验证
 
-- [ ] 7.1 补齐 `create_app()`：lifespan 资源管理、中间件、异常处理器、路由注册、CORS
-- [ ] 7.2 实现 `main.py` 入口，端口取自 `Settings.APP_PORT`（默认 8000），不硬编码
-- [ ] 7.3 红灯：写测试——启动应用后调用 `/api/v1/health` 返回 200（端到端冒烟）
-- [ ] 7.4 绿灯：修复装配问题直至冒烟通过
-- [ ] 7.5 真机验证：启动服务，`curl /api/v1/health` 返回 200 且 `components` 中 mysql / redis / milvus 均为 `ok`
-- [ ] 7.6 真机验证：停掉 Redis 容器后健康检查在超时内返回 200，且 `components.redis.status` 为 `down`
-- [ ] 7.7 全量门禁：`uv run pytest` 全绿、`uv run ruff check` 与 `uv run mypy` 零错误
-- [ ] 7.8 补全 `backend/README.md`，更新 `AGENTS.md` 的启动/测试命令，提交变更
+- [x] 7.1 补齐 `create_app()`：lifespan 资源管理、中间件、异常处理器、路由注册、CORS
+- [x] 7.2 实现 `main.py` 入口，端口取自 `Settings.APP_PORT`（默认 8000），不硬编码
+- [x] 7.3 红灯：写测试——启动应用后调用 `/api/v1/health` 返回 200（端到端冒烟）
+- [x] 7.4 绿灯：修复装配问题直至冒烟通过
+- [x] 7.5 真机验证：启动服务，`curl /api/v1/health` 返回 200 且 `components` 中 mysql / redis / milvus 均为 `ok`
+- [x] 7.6 真机验证：停掉 Redis 容器后健康检查在超时内返回 200，且 `components.redis.status` 为 `down`
+- [x] 7.7 全量门禁：`uv run pytest` 全绿、`uv run ruff check` 与 `uv run mypy` 零错误
+- [x] 7.8 补全 `backend/README.md`，更新 `AGENTS.md` 的启动/测试命令，提交变更

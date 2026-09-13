@@ -101,8 +101,8 @@ ekb/                          ← 单一 git 仓库
 cd backend
 uv sync
 uv run alembic upgrade head
-uv run uvicorn app.main:app --reload --port 8000
-uv run celery -A app.tasks.celery_app worker -l info    # 另开终端
+uv run python -m app.main                     # 端口取自 APP_PORT（默认 8000）
+uv run uvicorn --factory app.main:create_app --reload   # 开发模式
 
 # 前端
 cd frontend
