@@ -18,6 +18,9 @@ from app.core.exceptions import InvalidConfigurationError, MissingConfigurationE
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ENV_FILE = REPO_ROOT / ".env"
 
+# 签名密钥最小长度（HS256 下低于此长度的密钥存在被暴力枚举的现实风险）
+MIN_SECRET_KEY_LENGTH = 32
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -57,12 +60,49 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     health_check_timeout_sec: float = 2.0
 
-    @field_validator("mysql_password", "redis_password", "milvus_token", mode="before")
+    # ---------------------------------------------------------------- 认证与令牌
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_min: int = 15
+    jwt_refresh_token_expire_days: int = 7
+    # 刷新令牌只走 HttpOnly Cookie；Path 必须同时覆盖刷新与登出端点，
+    # 收窄到刷新端点自身会导致登出请求收不到 Cookie、无法撤销（见 design D3）。
+    refresh_cookie_name: str = "refresh_token"
+    refresh_cookie_path: str = "/api/v1/auth"
+    # 本地 http 环境为 False；生产（https）必须置 True
+    refresh_cookie_secure: bool = False
+    refresh_cookie_samesite: str = "lax"
+
+    # 登录失败限流（键 = 小写用户名 + 对端地址）
+    rate_limit_login_max_failures: int = 5
+    rate_limit_login_window_min: int = 15
+
+    # 初始管理员引导：仅当账号表为空时生效
+    bootstrap_admin_username: str | None = None
+    bootstrap_admin_password: str | None = Field(default=None, repr=False)
+
+    @field_validator(
+        "mysql_password",
+        "redis_password",
+        "milvus_token",
+        "bootstrap_admin_password",
+        mode="before",
+    )
     @classmethod
     def _blank_to_none(cls, value: object) -> object:
         """密码/令牌类配置为空串或纯空白时归一化为 None（避免以空密码发起认证）。"""
         if isinstance(value, str) and not value.strip():
             return None
+        return value
+
+    @field_validator("app_secret_key")
+    @classmethod
+    def _secret_key_must_be_strong(cls, value: str) -> str:
+        """签名密钥是会话安全的根：过短一律拒绝启动（spec：启动期 fail-fast）。
+
+        不在这里做"仅警告"处理——弱密钥意味着任何人都能伪造访问令牌。
+        """
+        if len(value) < MIN_SECRET_KEY_LENGTH:
+            raise ValueError(f"长度必须 ≥ {MIN_SECRET_KEY_LENGTH} 个字符")
         return value
 
 

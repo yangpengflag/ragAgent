@@ -14,6 +14,8 @@ dependencies = [
     "redis>=5.0",
     "pymilvus>=2.5",
     "structlog>=24.4",
+    "pyjwt>=2.9",
+    "pwdlib[argon2]>=0.2",
 ]
 
 [dependency-groups]

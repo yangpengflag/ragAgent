@@ -1,13 +1,13 @@
 ## 1. 配置、依赖与规格同步
 
-- [ ] 1.1 在 `backend/pyproject.toml` 增加 `pyjwt`、`pwdlib[argon2]`，`uv sync` 并锁定版本
-- [ ] 1.2 红灯：写测试——`APP_SECRET_KEY` 缺失或长度不足 32 字符时应用启动失败，且错误信息包含配置项名
-- [ ] 1.3 绿灯：扩展 `Settings`（`APP_SECRET_KEY` 强度校验、`JWT_ALGORITHM`、`JWT_ACCESS_TOKEN_EXPIRE_MIN`、`JWT_REFRESH_TOKEN_EXPIRE_DAYS`、刷新 Cookie 名与 `Path=/api/v1/auth` 与 `Secure`/`SameSite`、允许来源、`RATE_LIMIT_LOGIN_*` 阈值与窗口、初始管理员用户名与密码）
-- [ ] 1.4 绿灯：同步测试与样例的密钥占位值——`conftest` 的 `APP_SECRET_KEY` 改为合规长度、`tests/test_env_isolation.py` 的断言同步、`.env.example` 用合规占位值并**删除** `JWT_SECRET_KEY`（只保留 `APP_SECRET_KEY` 作为唯一签名密钥）；确认既有测试全绿
-- [ ] 1.5 红灯：写测试——`GET /api/v1/health` 在**未携带任何令牌**时仍可访问（鉴权不得误伤既有匿名接口）
-- [ ] 1.6 红灯：写测试——白名单来源的跨源请求返回 `Access-Control-Allow-Credentials: true` 且回显该来源；非白名单来源不返回该 CORS 头
-- [ ] 1.7 绿灯：验证并锁定既有 CORS 行为（实现已存在，不改动；若测试暴露缺陷则修正）
-- [ ] 1.8 绿灯：修订 `openspec/project.md`——技术栈**新增**认证库一行（PyJWT + pwdlib[argon2]）；角色模型改为**两层**（系统级 ADMIN/MEMBER + 库级三档）；capability 粒度约定放宽为「新增 / 仅修改 / 多能力」三种情形
+- [x] 1.1 在 `backend/pyproject.toml` 增加 `pyjwt`、`pwdlib[argon2]`，`uv sync` 并锁定版本
+- [x] 1.2 红灯：写测试——`APP_SECRET_KEY` 缺失或长度不足 32 字符时应用启动失败，且错误信息包含配置项名
+- [x] 1.3 绿灯：扩展 `Settings`（`APP_SECRET_KEY` 强度校验、`JWT_ALGORITHM`、`JWT_ACCESS_TOKEN_EXPIRE_MIN`、`JWT_REFRESH_TOKEN_EXPIRE_DAYS`、刷新 Cookie 名与 `Path=/api/v1/auth` 与 `Secure`/`SameSite`、允许来源、`RATE_LIMIT_LOGIN_*` 阈值与窗口、初始管理员用户名与密码）
+- [x] 1.4 绿灯：同步测试与样例的密钥占位值——`conftest` 的 `APP_SECRET_KEY` 改为合规长度、`tests/test_env_isolation.py` 的断言同步、`.env.example` 用合规占位值并**删除** `JWT_SECRET_KEY`（只保留 `APP_SECRET_KEY` 作为唯一签名密钥）；确认既有测试全绿
+- [x] 1.5 红灯：写测试——`GET /api/v1/health` 在**未携带任何令牌**时仍可访问（鉴权不得误伤既有匿名接口）
+- [x] 1.6 红灯：写测试——白名单来源的跨源请求返回 `Access-Control-Allow-Credentials: true` 且回显该来源；非白名单来源不返回该 CORS 头
+- [x] 1.7 绿灯：验证并锁定既有 CORS 行为（实现已存在，不改动；若测试暴露缺陷则修正）
+- [x] 1.8 绿灯：修订 `openspec/project.md`——技术栈**新增**认证库一行（PyJWT + pwdlib[argon2]）；角色模型改为**两层**（系统级 ADMIN/MEMBER + 库级三档）；capability 粒度约定放宽为「新增 / 仅修改 / 多能力」三种情形
 
 ## 2. 地基补足（偿还 scaffold 债务，后续所有查询与端点都依赖它）
 

@@ -27,11 +27,18 @@ _MANAGED_PREFIXES = (
     "MINERU_",
     "LOG_",
     "HEALTH_",
+    "JWT_",
+    "REFRESH_COOKIE_",
+    "RATE_LIMIT_",
+    "BOOTSTRAP_",
 )
 
-# 构造 Settings 所需的最小必填集（仅测试用，不连接真实服务）
+# 构造 Settings 所需的最小必填集（仅测试用，不连接真实服务）。
+# APP_SECRET_KEY 必须满足 ≥32 字符的强度下限，否则配置层会拒绝构造。
+TEST_SECRET_KEY = "test-secret-key-0123456789abcdefghijklmn"
+
 _REQUIRED_VALUES = {
-    "APP_SECRET_KEY": "test-secret",
+    "APP_SECRET_KEY": TEST_SECRET_KEY,
     "MYSQL_HOST": "127.0.0.1",
     "MYSQL_USER": "root",
     "MYSQL_DATABASE": "ragagent",

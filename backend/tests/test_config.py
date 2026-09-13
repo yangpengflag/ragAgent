@@ -70,3 +70,40 @@ def test_empty_password_is_treated_as_unset(isolated_env):
     assert settings.redis_password is None
     assert settings.milvus_token is None
     assert settings.mysql_password is None
+
+
+def test_short_secret_key_is_rejected(isolated_env):
+    """认证 R1 前置：签名密钥长度不足时启动失败，且错误信息指出配置项名。"""
+    with pytest.raises(InvalidConfigurationError) as exc_info:
+        isolated_env(APP_SECRET_KEY="too-short")
+
+    assert "APP_SECRET_KEY" in str(exc_info.value)
+
+
+def test_secret_key_at_minimum_length_is_accepted(isolated_env):
+    """边界：恰好达到下限必须被接受（避免把下限写偏）。"""
+    settings = isolated_env(APP_SECRET_KEY="x" * 32)
+
+    assert settings.app_secret_key == "x" * 32
+
+
+def test_auth_defaults_match_documented_values(isolated_env):
+    """认证相关配置的默认值必须与 design.md 的决策一致。"""
+    settings = isolated_env()
+
+    assert settings.jwt_algorithm == "HS256"
+    assert settings.jwt_access_token_expire_min == 15
+    assert settings.jwt_refresh_token_expire_days == 7
+    assert settings.refresh_cookie_path == "/api/v1/auth"
+    assert settings.refresh_cookie_secure is False
+    assert settings.refresh_cookie_samesite == "lax"
+    assert settings.rate_limit_login_max_failures == 5
+    assert settings.rate_limit_login_window_min == 15
+    assert settings.bootstrap_admin_username is None
+
+
+def test_empty_bootstrap_password_is_treated_as_unset(isolated_env):
+    """空串的引导密码必须归一化为 None，避免创建"空密码管理员"。"""
+    settings = isolated_env(BOOTSTRAP_ADMIN_PASSWORD="")
+
+    assert settings.bootstrap_admin_password is None

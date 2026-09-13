@@ -43,7 +43,8 @@ def test_isolated_env_does_not_leak_repo_dotenv(isolated_env):
 
     assert isinstance(settings, Settings)
     assert settings.mysql_password is None
-    assert settings.app_secret_key == "test-secret"
+    # 与 conftest 的 TEST_SECRET_KEY 保持一致（满足 ≥32 字符的强度下限）
+    assert settings.app_secret_key == "test-secret-key-0123456789abcdefghijklmn"
 
 
 def test_isolated_env_can_override_values(isolated_env):
