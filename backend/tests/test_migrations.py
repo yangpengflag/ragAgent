@@ -16,11 +16,14 @@ from pathlib import Path
 import pytest
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import URL, Engine, create_engine, text
+from sqlalchemy import URL, Engine, create_engine, select, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from alembic import command
 from app.core.config import get_settings
 from app.core.db import build_database_url
+from app.models.user import Account
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -160,3 +163,58 @@ def test_downgrade_to_base_clears_version(prepared_test_database):
 
     command.upgrade(config, "head")  # 复原，便于后续手工验证
     assert _version_rows() == 1
+
+
+def test_users_table_uniqueness_semantics_on_mysql(prepared_test_database):
+    """真实 MySQL 上验证「活跃用户名唯一、软删后让位」。
+
+    这是本变更**唯一无法在 SQLite 上验证**的部分：MySQL 不支持部分索引，
+    实现改用「虚拟生成列 + 唯一索引」。若 MySQL 不接受该组合（或生成列未生效），
+    这条用例会失败——而不是等到线上才发现"删了账号同名却建不回来"。
+    """
+    config = prepared_test_database
+    command.upgrade(config, "head")
+
+    engine = create_engine(build_database_url(test=True))
+    try:
+        with engine.connect() as connection:
+            generated = connection.execute(
+                text(
+                    "SELECT extra FROM information_schema.columns "
+                    "WHERE table_schema = :db AND table_name = 'users' "
+                    "AND column_name = 'username_active'"
+                ),
+                {"db": _test_database_name()},
+            ).scalar_one()
+            assert "GENERATED" in generated.upper(), f"username_active 应为生成列，实际: {generated}"
+
+            non_unique = connection.execute(
+                text(
+                    "SELECT non_unique FROM information_schema.statistics "
+                    "WHERE table_schema = :db AND table_name = 'users' "
+                    "AND index_name = 'uk_users_username_active'"
+                ),
+                {"db": _test_database_name()},
+            ).scalar_one()
+            assert int(non_unique) == 0, "uk_users_username_active 必须是唯一索引"
+
+        with Session(engine) as session:
+            session.add(Account(username="dup", display_name="D", password_hash="h"))
+            session.commit()
+
+            session.add(Account(username="dup", display_name="Dup II", password_hash="h"))
+            with pytest.raises(IntegrityError):
+                session.commit()
+            session.rollback()
+
+            survivor = session.execute(select(Account)).scalars().one()
+            survivor.soft_delete()
+            session.commit()
+
+            session.add(Account(username="dup", display_name="Dup III", password_hash="h"))
+            session.commit()  # 软删后同名可重建
+
+            remaining = session.execute(select(Account)).scalars().all()
+            assert [row.display_name for row in remaining] == ["Dup III"]
+    finally:
+        engine.dispose()

@@ -14,8 +14,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import BINARY, CHAR, DateTime, event
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, with_loader_criteria
+from sqlalchemy import BINARY, CHAR, DateTime, MetaData, event
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.types import TypeDecorator
 
 from app.core.ids import uuid7
@@ -54,8 +54,21 @@ class GUID(TypeDecorator[uuid.UUID]):
         return uuid.UUID(hex=value) if dialect.name == "sqlite" else uuid.UUID(bytes=value)
 
 
+# 约束命名约定（`database-conventions.md`：索引 `idx_<table>_<cols>`、唯一 `uk_...`）。
+# 放在 metadata 上而非逐处手写名字：手写总会漏，漏掉的名字在排障时毫无信息量。
+_NAMING_CONVENTION = {
+    "ix": "idx_%(table_name)s_%(column_0_N_name)s",
+    "uq": "uk_%(table_name)s_%(column_0_N_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s",
+    "pk": "pk_%(table_name)s",
+}
+
+
 class Base(DeclarativeBase):
     """所有模型的声明式基类。"""
+
+    metadata = MetaData(naming_convention=_NAMING_CONVENTION)
 
 
 class BaseModel(Base):
@@ -96,15 +109,15 @@ def _exclude_soft_deleted(state: Any) -> None:
     "读取当前 execution_options" 的 API，会话级开关要么依赖私有属性、要么在嵌套时
     无法正确恢复。语句级更显式，也能被 grep 到。
 
-    经实测，`Session.get()`（按主键加载）同样经过本事件、也受过滤，
-    因此业务代码用 `select()` 或 `get()` 都不会漏出已软删行。
+    实现细节（避免再次踩坑）：一开始用 `with_loader_criteria(...)` 作为
+    `state.statement.options(...)` 应用，单元测试看似都过；但真在 `Session.get()`
+    路径上验 SQL 时发现 `WHERE deleted_at IS NULL` 没拼进去——SA 2.0 的
+    `Session.get()` 走 fast-path，options 不被传播。**直接 `.where()` 显式追加**
+    是唯一同时覆盖 `select()` 与 `Session.get()` 的写法。
     """
     if not state.is_select or state.execution_options.get(INCLUDE_SOFT_DELETED):
         return
-    state.statement = state.statement.options(
-        with_loader_criteria(
-            BaseModel,
-            lambda cls: cls.deleted_at.is_(None),
-            include_aliases=True,
-        )
-    )
+    bind_mapper = state.bind_mapper
+    if bind_mapper is None or not issubclass(bind_mapper.class_, BaseModel):
+        return
+    state.statement = state.statement.where(bind_mapper.class_.deleted_at.is_(None))
