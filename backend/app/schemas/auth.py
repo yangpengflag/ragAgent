@@ -40,3 +40,9 @@ class RefreshResponse(ApiResponse):
 
 class LogoutResponse(ApiResponse):
     pass
+
+
+class MeResponse(ApiResponse):
+    """`GET /auth/me`：当前账号信息，供前端恢复会话与路由守卫。"""
+
+    user: UserSummary

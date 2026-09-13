@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app.api.deps import current_request_id, get_auth_service
+from app.api.deps import CurrentUserDep, current_request_id, get_auth_service
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.error_handlers import app_error_response
@@ -24,6 +24,7 @@ from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
     LogoutResponse,
+    MeResponse,
     RefreshResponse,
     UserSummary,
 )
@@ -170,3 +171,17 @@ def logout(
     service.logout(refresh_token=request.cookies.get(settings.refresh_cookie_name))
     _clear_refresh_cookie(response)
     return LogoutResponse(request_id=request_id)
+
+
+@router.get("/me", response_model=MeResponse)
+def me(account: CurrentUserDep, request_id: RequestIdDep) -> MeResponse:
+    """当前登录态查询（§6.5）：永不含密码字段。"""
+    return MeResponse(
+        request_id=request_id,
+        user=UserSummary(
+            id=str(account.id),
+            username=account.username,
+            display_name=account.display_name,
+            system_role=account.system_role,
+        ),
+    )

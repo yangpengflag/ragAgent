@@ -9,16 +9,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.db import get_db
+from app.core.exceptions import AccessDeniedError, AppError, TokenExpiredError
 from app.core.request_context import request_id_var
-from app.services.auth_service import AuthConfig, AuthService
+from app.core.security import TokenType, decode_token
+from app.models.user import Account
+from app.services.auth_service import AuthConfig, AuthService, InvalidCredentialsError
 from app.services.ports import RateLimitStore, RevocationStore
 
 
@@ -71,3 +77,61 @@ def get_auth_service(
     config: AuthConfigDep,
 ) -> AuthService:
     return AuthService(revocations, rate_limits, config)
+
+
+# ---------------------------------------------------------------- 鉴权依赖（§6）
+# auto_error=False：缺失凭据时拿 None，由我们抛统一信封的 401，
+# 避免 FastAPI 默认的裸 {"detail": ...} 响应绕过错误码约定。
+_bearer_scheme = HTTPBearer(auto_error=False)
+
+CredentialsDep = Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)]
+
+
+def get_current_user(
+    session: SessionDep,
+    credentials: CredentialsDep,
+) -> Account:
+    """解析 Bearer 访问令牌并返回当前账号（§6.2）。
+
+    校验签名与过期后**查库**确认账号存在且启用（design D6）——
+    停用 / 软删对已签发的访问令牌立即生效，而非等令牌自然过期。
+    用 select 而非 session.get：后者命中 identity map 时绕过软删过滤。
+    """
+    if credentials is None:
+        raise InvalidCredentialsError("未认证")
+
+    try:
+        claims = decode_token(
+            token=credentials.credentials,
+            expected_type=TokenType.ACCESS,
+            secret_key=get_settings().app_secret_key,
+            algorithm=get_settings().jwt_algorithm,
+        )
+    except TokenExpiredError:
+        raise  # 过期保持专属错误码（客户端可走刷新）
+    except AppError as exc:  # 签名无效/格式非法/类型不符 → 统一 401 unauthorized
+        raise InvalidCredentialsError("未认证") from exc
+
+    account = session.execute(
+        select(Account).where(Account.id == claims.account_id)
+    ).scalar_one_or_none()
+    if account is None or not account.is_active:
+        raise InvalidCredentialsError("未认证")
+    return account
+
+
+CurrentUserDep = Annotated[Account, Depends(get_current_user)]
+
+
+def require_role(*allowed_roles: str) -> Callable[..., Account]:
+    """按「所需角色集合」参数化的角色依赖（design D7）。
+
+    角色不足返回 403 `access_denied`，与未认证 401 严格区分。
+    """
+
+    def dependency(account: CurrentUserDep) -> Account:
+        if account.system_role not in allowed_roles:
+            raise AccessDeniedError("权限不足")
+        return account
+
+    return dependency

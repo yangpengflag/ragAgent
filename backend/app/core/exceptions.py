@@ -48,6 +48,13 @@ class NotFoundError(AppError):
     error_code = ErrorCode.NOT_FOUND
 
 
+class ConflictError(AppError):
+    """与当前状态冲突（用户名已存在、最后一个管理员保护等）。409 `conflict`。"""
+
+    status_code = HTTPStatus.CONFLICT
+    error_code = ErrorCode.CONFLICT
+
+
 class TokenExpiredError(AppError):
     """令牌已过期。与"签名无效/格式非法"区分（401 `token_expired`）：
     客户端可凭刷新令牌恢复，其余 401 一律要求重新登录。"""
