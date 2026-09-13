@@ -55,6 +55,20 @@ class Settings(BaseSettings):
     milvus_uri: str = "http://localhost:19530"
     milvus_token: str | None = Field(default=None, repr=False)
     milvus_database: str = "ragagent"
+    milvus_collection: str = "kb_chunks"
+    # KB 级隔离的 partition key 字段名（与入库 schema 对齐，design D4）
+    milvus_partition_key: str = "kb_id"
+
+    # ---------------------------------------------------------------- DashScope（OpenAI 兼容模式）
+    # 与 Milvus/Redis 不同：key 缺失不阻止应用启动（RAG 链路之外的端点照常服务），
+    # 由 integrations 工厂在构造模型客户端时报出缺失变量名（lazy fail-fast）。
+    dashscope_api_key: str | None = Field(default=None, repr=False)
+    dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    dashscope_chat_model: str = "qwen-plus"
+    dashscope_embed_model: str = "qwen3.7-text-embedding"
+    dashscope_embed_dim: int = 1024
+    dashscope_embed_batch_size: int = 20
+    dashscope_rerank_model: str | None = None
 
     # ---------------------------------------------------------------- 日志与健康检查
     log_level: str = "INFO"
@@ -80,11 +94,29 @@ class Settings(BaseSettings):
     bootstrap_admin_username: str | None = None
     bootstrap_admin_password: str | None = Field(default=None, repr=False)
 
+    # ---------------------------------------------------------------- 观测（LangSmith，默认关闭）
+    # 直接采用 SDK 原生 LANGSMITH_* 变量名作为单一来源（design D5），
+    # 不建 OBS_* 翻译层；生效判定见 obs_tracing_effective。
+    obs_tracing: bool = Field(default=False, validation_alias="LANGSMITH_TRACING")
+    obs_endpoint: str | None = Field(
+        default=None, validation_alias="LANGSMITH_ENDPOINT"
+    )
+    obs_api_key: str | None = Field(
+        default=None, repr=False, validation_alias="LANGSMITH_API_KEY"
+    )
+    obs_project: str = Field(default="ragagent", validation_alias="LANGSMITH_PROJECT")
+    # 可选：收敛后台上报的重试/连接窗口（spike R2）
+    obs_timeout_ms: int | None = Field(default=None, validation_alias="LANGSMITH_TIMEOUT_MS")
+
     @field_validator(
         "mysql_password",
         "redis_password",
         "milvus_token",
         "bootstrap_admin_password",
+        "obs_endpoint",
+        "obs_api_key",
+        "dashscope_api_key",
+        "dashscope_rerank_model",
         mode="before",
     )
     @classmethod
@@ -104,6 +136,13 @@ class Settings(BaseSettings):
         if len(value) < MIN_SECRET_KEY_LENGTH:
             raise ValueError(f"长度必须 ≥ {MIN_SECRET_KEY_LENGTH} 个字符")
         return value
+
+    @property
+    def obs_tracing_effective(self) -> bool:
+        """观测生效判定：开关打开且上报目标与凭证齐全（spec：未配置目标 = 视为关闭）。"""
+        return bool(
+            self.obs_tracing and self.obs_endpoint and self.obs_api_key
+        )
 
 
 class _Unset:

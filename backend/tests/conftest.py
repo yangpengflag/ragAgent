@@ -31,6 +31,7 @@ _MANAGED_PREFIXES = (
     "REFRESH_COOKIE_",
     "RATE_LIMIT_",
     "BOOTSTRAP_",
+    "LANGSMITH_",
 )
 
 # 构造 Settings 所需的最小必填集（仅测试用，不连接真实服务）。
@@ -91,6 +92,11 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch) -> Callable[..., Settings]:
     get_settings.cache_clear()
 
     def build(**overrides: str) -> Settings:
+        # 每次构建都先清空受管前缀：同一测试内多次 build 时，
+        # 前一次 build 注入的变量不得泄漏进后一次（可重复构造的语义）
+        for name in list(os.environ):
+            if name.startswith(_MANAGED_PREFIXES):
+                monkeypatch.delenv(name, raising=False)
         values = dict(_REQUIRED_VALUES)
         values.update(overrides)
         for key, value in values.items():

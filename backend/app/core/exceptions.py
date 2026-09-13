@@ -27,6 +27,7 @@ class ErrorCode:
     UNSUPPORTED_FILE_TYPE = "unsupported_file_type"
     RATE_LIMITED = "rate_limited"
     UPSTREAM_UNAVAILABLE = "upstream_unavailable"
+    SECURITY_VIOLATION = "security_violation"
 
 
 class AppError(Exception):
@@ -68,6 +69,18 @@ class AccessDeniedError(AppError):
 
     status_code = HTTPStatus.FORBIDDEN
     error_code = ErrorCode.ACCESS_DENIED
+
+
+class SecurityViolationError(AppError):
+    """安全边界被突破（如检索返回未授权知识库内容）。
+
+    500 `security_violation`：明确区别于普通 `internal_error`，
+    便于监控把「权限过滤失效」识别为安全事件并告警。
+    响应 message 不暴露内部细节（详情只进日志，带 request_id）。
+    """
+
+    status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+    error_code = ErrorCode.SECURITY_VIOLATION
 
 
 class ConfigurationError(Exception):

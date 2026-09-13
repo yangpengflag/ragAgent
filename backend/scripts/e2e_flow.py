@@ -4,9 +4,9 @@
     uv run python scripts/e2e_flow.py
 """
 
-import httpx
-
 from datetime import datetime
+
+import httpx
 
 BASE = "http://127.0.0.1:8000"
 ADMIN = "admin"
