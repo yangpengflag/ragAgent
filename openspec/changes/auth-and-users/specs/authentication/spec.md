@@ -71,6 +71,20 @@
 - **WHEN** 仅把刷新令牌放在请求体中（Cookie 缺失）调用刷新接口
 - **THEN** 返回 401，说明刷新令牌只从 Cookie 读取
 
+### Requirement: 跨源携带凭据的支持
+
+由于前端应用与后端分属不同源（开发期分别位于 5173 与 8000 端口），系统 SHALL 允许来自配置白名单来源的跨源请求携带凭据（Cookie），且 MUST NOT 以通配符来源配合凭据使用。
+
+#### Scenario: 白名单来源的跨源凭据请求
+
+- **WHEN** 浏览器从配置的允许来源发起携带凭据的跨源请求
+- **THEN** 响应包含 `Access-Control-Allow-Credentials: true`，且 `Access-Control-Allow-Origin` 回显该来源（而非通配符）
+
+#### Scenario: 非白名单来源
+
+- **WHEN** 请求来源不在允许列表中
+- **THEN** 响应不包含允许该来源的 CORS 头，浏览器侧无法携带凭据访问
+
 ### Requirement: 登出与刷新令牌撤销
 
 系统 SHALL 提供 `POST /api/v1/auth/logout`，使当前刷新令牌立即失效并清除 Cookie。撤销 MUST 在令牌自然过期前始终有效，且 MUST 幂等；撤销 MUST 只影响当前会话，不影响同账号在其他客户端的登录。
