@@ -14,11 +14,15 @@
 **首个 `chat/stream`（SSE）change 必须改**：把 reset 放进生成器的 `finally`，
 或把 `request_id` 显式注入生成器闭包。
 
-## 2. 成功响应体的 request_id 需逐端点写
+## 2. 成功响应体的 request_id 需逐端点写 ✅ 已处理（`auth-and-users` §2）
 
-当前只有 `/api/v1/health` 写了 `request_id`。
-`api-conventions.md` 要求所有成功响应都带该字段。
-**首个业务端点前**应补一个响应包装/依赖，避免逐处遗漏。
+原先只有 `/api/v1/health` 手工带 `request_id`。已落地：
+
+- `app/schemas/base.py::ApiResponse` —— 成功响应基类，`request_id` 为**必填**（漏传在构造期即失败）
+- `app/api/deps.py::current_request_id` —— 取当前请求标识的依赖
+- `/api/v1/health` 已收敛到该基类，响应形状保持不变（有测试锁定）
+
+新端点只需继承 `ApiResponse`；`tests/test_api_response.py` 守住了形状与一致性。
 
 ## 3. 500 响应缺 CORS 头
 
@@ -31,16 +35,20 @@
 `RequestIdMiddleware` 继承 `BaseHTTPMiddleware`，对 `scope["type"] != "http"` 直接透传。
 **若引入 WebSocket**（如实时进度推送），需单独的中间件。
 
-## 5. 软删的已知坑（首个业务实体 change 一并处理）
+## 5. 软删的已知坑（首个业务实体 change 一并处理）——部分已处理（`auth-and-users` §2/§3）
 
-`BaseModel` 只提供 `deleted_at` 字段与 `soft_delete()`，**未注册全局查询过滤**（刻意的 YAGNI）。
-引入查询时必须一次性处理：
+已在 `auth-and-users` §2 落地：
 
-- 加全局 `with_loader_criteria` 或强制显式 `deleted_at IS NULL`，否则 `select`/`session.get` 会返回已删行
-- **唯一约束要兼容软删**（否则删后无法重建同名记录）：改用部分唯一索引，或把 `deleted_at` 纳入唯一键
-- `soft_delete()` 只改字段，不 flush/commit、不级联清 Milvus 向量 —— 按 `database-conventions.md`「删除必须清向量」，须在 service 层编排
-- 为 `deleted_at` 补索引
-- `soft_delete()` 目前**非幂等**（重复调用覆盖时间戳），且无 `restore()`
+- ✅ **全局查询过滤**：`app/models/base.py` 注册 `do_orm_execute`，为所有 ORM SELECT 附加 `deleted_at IS NULL`
+  （实测 `Session.get()` 同样被过滤，非假设）；逃生通道为**语句级**执行选项 `include_soft_deleted`
+- ✅ **`deleted_at` 补索引**
+- ✅ **`soft_delete()` 改为幂等**（重复调用不覆盖首次删除时间）
+
+仍待处理：
+
+- ⏳ **唯一约束兼容软删**：`users` 表的 `username` 用**部分唯一索引**（`WHERE deleted_at IS NULL`）——`auth-and-users` §3 迁移中落地；后续每个带业务唯一键的表都要照此办理
+- ⏳ **`soft_delete()` 不 flush/commit、不级联清 Milvus 向量** —— 文档类实体的删除编排（清向量 + 对账）随文档能力引入
+- ❌ **`restore()`**：本期明确不做（仅启用/停用），软删记录仅用于审计追溯
 
 ## 6. UUID 与 hex 互转工具尚未提供
 

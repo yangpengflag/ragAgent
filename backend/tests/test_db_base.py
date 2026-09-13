@@ -11,10 +11,11 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.core.db import get_db
-from app.models.base import BaseModel
+from app.models.base import INCLUDE_SOFT_DELETED, BaseModel
 
 
 class Widget(BaseModel):
@@ -62,6 +63,7 @@ def test_created_at_is_not_updated(sqlite_session):
 
 
 def test_soft_delete_keeps_row(sqlite_session):
+    """软删只写标记，行仍在表中（auth-and-users §2 起默认查询会过滤它）。"""
     widget = Widget(name="delta")
     sqlite_session.add(widget)
     sqlite_session.commit()
@@ -71,9 +73,84 @@ def test_soft_delete_keeps_row(sqlite_session):
     sqlite_session.commit()
     sqlite_session.expire_all()
 
-    stored = sqlite_session.get(Widget, widget_id)
-    assert stored is not None, "软删不得物理删除行"
-    assert stored.deleted_at is not None
+    stored = (
+        sqlite_session.execute(
+            select(Widget)
+            .where(Widget.id == widget_id)
+            .execution_options(**{INCLUDE_SOFT_DELETED: True})
+        )
+        .scalars()
+        .one()
+    )
+    assert stored.deleted_at is not None, "软删不得物理删除行"
+
+
+def test_soft_deleted_rows_are_excluded_by_default(sqlite_session):
+    """全局软删过滤：默认查询查不到已软删行（auth-and-users 任务 2.1）。"""
+    kept = Widget(name="keep")
+    removed = Widget(name="gone")
+    sqlite_session.add_all([kept, removed])
+    sqlite_session.commit()
+
+    removed.soft_delete()
+    sqlite_session.commit()
+
+    names = [row.name for row in sqlite_session.execute(select(Widget)).scalars()]
+    assert names == ["keep"]
+
+
+def test_statement_level_escape_hatch_includes_soft_deleted(sqlite_session):
+    """逃生通道（语句级）：显式声明后能查到已软删行。"""
+    widget = Widget(name="epsilon")
+    sqlite_session.add(widget)
+    sqlite_session.commit()
+    widget.soft_delete()
+    sqlite_session.commit()
+
+    rows = (
+        sqlite_session.execute(
+            select(Widget).execution_options(**{INCLUDE_SOFT_DELETED: True})
+        )
+        .scalars()
+        .all()
+    )
+
+    assert [row.name for row in rows] == ["epsilon"]
+
+
+def test_soft_delete_is_idempotent(sqlite_session):
+    """重复软删不得覆盖首次删除时间（auth-and-users 任务 2.3）。"""
+    widget = Widget(name="eta")
+    sqlite_session.add(widget)
+    sqlite_session.commit()
+
+    widget.soft_delete()
+    first = widget.deleted_at
+    time.sleep(0.01)
+    widget.soft_delete()
+    sqlite_session.commit()
+
+    assert widget.deleted_at == first
+
+
+def test_session_get_is_also_filtered(sqlite_session):
+    """`Session.get()` 同样受软删过滤（实测确认，非假设）。
+
+    这条很重要：如果按主键加载能绕过过滤，"软删账号被当成有效账号"就会从
+    `get()` 这条路径漏出来。用另一个会话验证，避免命中身份映射看不出真实行为。
+    """
+    widget = Widget(name="theta")
+    sqlite_session.add(widget)
+    sqlite_session.commit()
+    widget_id = widget.id
+    widget.soft_delete()
+    sqlite_session.commit()
+
+    other = Session(bind=sqlite_session.get_bind())
+    try:
+        assert other.get(Widget, widget_id) is None
+    finally:
+        other.close()
 
 
 def _spy_on_session_close(monkeypatch) -> list[Session]:

@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1.health import router as health_router
+from app.api.v1.router import api_router
 from app.core.config import Settings, load_settings
 from app.core.db import get_engine
 from app.core.error_handlers import register_exception_handlers
@@ -73,7 +73,8 @@ def create_app() -> FastAPI:
     )
 
     register_exception_handlers(app)
-    app.include_router(health_router)
+    # 只挂载 v1 聚合器：新增能力在 app/api/v1/router.py 登记，不必改本文件
+    app.include_router(api_router)
     return app
 
 

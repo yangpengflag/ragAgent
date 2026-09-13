@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 
-from app.core.request_context import request_id_var
+from app.api.deps import current_request_id
 from app.domain.health import HealthProbe, collect_health
 from app.integrations.health_probes import build_probes
 from app.schemas.health import ComponentHealth, HealthResponse
@@ -26,11 +26,10 @@ def get_probes() -> Sequence[HealthProbe]:
     description="报告 MySQL / Redis / Milvus 连通性；任一不可用时仍返回 200 并在 components 标注。",
 )
 async def health(
-    request: Request,
     probes: Sequence[HealthProbe] = Depends(get_probes),
+    request_id: str = Depends(current_request_id),
 ) -> HealthResponse:
     report = collect_health(probes)
-    request_id = getattr(request.state, "request_id", None) or request_id_var.get() or ""
     return HealthResponse(
         request_id=request_id,
         status=report.status,
