@@ -75,6 +75,8 @@ EKB 把这些文档解析、切分、向量化后建成可检索的知识库，�
 | 文档解析 | MinerU | 默认云 API v4（`model_version=vlm`）；可切本地 `mineru-api`。两者输出均为 `content_list.json` |
 | 生成模型 | DashScope `qwen-plus` | OpenAI 兼容模式 |
 | 向量模型 | DashScope `qwen3.7-text-embedding` | **1024 维**；批量 20 条/次；单行 128k token。入库 `text_type=document`，查询 `text_type=query` |
+| RAG 编排 | LangChain 组件（`langchain-core` / `langchain-openai` / `langchain-milvus`） | 仅用于组件抽象与链路编排；**不引入** `langchain-community`（1.0 后冻结）、`langchain` 主包与 LangGraph（纯 RAG 无 Agent 需求）。DashScope 经 OpenAI 兼容端点接入，不装 DashScope SDK |
+| 链路观测 | LangSmith（可开关） | **非生产链路必需依赖**：默认关闭；上报失败 fail-open；上报目标 `LANGSMITH_ENDPOINT` 可配置（支持自托管，满足企业数据流向要求） |
 | 重排模型 | DashScope `gte-rerank-v2` | 二期，开关控制 |
 | 前端框架 | React 18 + Vite + TypeScript | 纯 SPA，无 BFF、无 SSR |
 | 前端样式 | Tailwind CSS 4 + shadcn/ui (base-nova / neutral) + lucide-react | 沿用工作区既有样式规约 |
@@ -104,7 +106,10 @@ backend/app/
 │   ├─ retrieval/     召回 / 融合 / 重排
 │   └─ generation/    prompt 组装 / 引用标注
 ├─ services/          编排层：事务、状态机、跨组件协调
-├─ integrations/      外部依赖适配：mineru / dashscope / milvus / redis / storage
+├─ integrations/      外部依赖适配：mineru / milvus / redis / storage / llm / embeddings / vectorstore / retriever / tracing / qa_chain
+
+**集成边界纪律**（MUST）：LangChain / LangSmith 类型（`Document`、消息类型、Runnable 等）**不得越过 `integrations/`** 进入 `domain/` 或 `services/`——类型转换只在 integrations 内完成，由 `tests/test_import_boundaries.py` 守卫。
+`domain/` 保留检索/切分/生成的纯函数与数据契约（`RetrievedChunk`、prompt 模板）；LangChain 的价值限定为「组件实现 + 链路编排 + 观测」，切分器等差异化资产不进框架。
 ├─ models/            SQLAlchemy 模型
 ├─ schemas/           Pydantic Schema
 └─ tasks/             Celery 任务
@@ -227,3 +232,4 @@ query → embedding(text_type=query)
 ### 变更记录
 
 - **2026-09-12 项目定稿**：由 Wanderchina（Java Spring Boot + Next.js）整体重定向为企业知识库系统（Python FastAPI + React Vite）。确定技术栈、切分与检索策略、多知识库与权限模型、环境现状。旧项目遗留的 submodule 结构不再适用，改为单仓。
+- **2026-09-13 引入 LangChain 编排基座**：change `rag-orchestration-langchain`。RAG 链路动工前定编排层：LangChain 组件收口在 `integrations/`（边界由测试守卫），切分器/契约/prompt 留在 `domain/`，LangSmith 观测默认关闭且 fail-open。两个 spike 结论：Milvus partition_key + expr 过滤组合正确且剪枝有效；LangSmith 上报在网络黑洞下主线程零阻塞。新增风险记录 R6：langchain-milvus 自动建表路径不可依赖，collection schema 归 ingest 侧显式创建。
