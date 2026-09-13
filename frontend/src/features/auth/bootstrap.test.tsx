@@ -77,7 +77,7 @@ describe("启动会话引导", () => {
     // 两次并发刷新会互相作废，表现为"偶发被踢回登录页"
     render(
       <StrictMode>
-        <MemoryRouter>
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <SessionBootstrap />
         </MemoryRouter>
       </StrictMode>,

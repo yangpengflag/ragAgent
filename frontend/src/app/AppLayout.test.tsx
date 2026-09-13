@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { AppProviders } from "@/app/providers";
 import { AppRoutes } from "@/app/AppRoutes";
+import { bootstrapSession } from "@/features/auth/bootstrap";
 import { API_BASE_URL } from "@/lib/api/client";
 import { server } from "@tests/msw/server";
 
@@ -48,6 +49,8 @@ async function renderApp(path = "/") {
         </MemoryRouter>
       </AppProviders>,
     );
+    // 与组件内的引导共享同一个 Promise（去重），在 act 内 await 以免告警
+    await bootstrapSession();
   });
   return utils;
 }

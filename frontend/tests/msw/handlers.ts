@@ -63,7 +63,7 @@ export const healthEmptyHandler = http.get(HEALTH_URL, () =>
   }),
 );
 
-export const handlers = [healthOkHandler];
+
 
 // ---------------------------------------------------------------- 认证
 
@@ -166,3 +166,13 @@ export const authenticatedSessionHandlers = [
   refreshSuccessHandler,
   meHandler,
 ];
+
+/**
+ * 默认 handlers（放在文件末尾：引用上面定义的常量）。
+ *
+ * 除健康检查外，默认提供"无有效会话"的刷新响应与当前账号响应：路由表最外层
+ * 会做启动引导（refresh → me），任何渲染路由表的用例都会发出刷新请求。
+ * 没有默认 handler 时 msw 会按 `onUnhandledRequest: "error"` 报错刷屏——
+ * 需要已登录会话的用例用 `server.use(...)` 覆盖即可（后注册的 handler 优先）。
+ */
+export const handlers = [healthOkHandler, refreshUnauthorizedHandler, meHandler];

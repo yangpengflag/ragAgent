@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { AppProviders } from "@/app/providers";
 import { AppRoutes } from "@/app/AppRoutes";
 import { getAccessToken, resetSession } from "@/lib/api/session";
+import { bootstrapSession } from "@/features/auth/bootstrap";
 import { useSessionStore } from "@/features/auth/session-store";
 import {
   authenticatedSessionHandlers,
@@ -32,6 +33,8 @@ async function renderApp(path: string) {
         </MemoryRouter>
       </AppProviders>,
     );
+    // 与组件内的引导共享同一个 Promise（去重），在 act 内 await 以免告警
+    await bootstrapSession();
   });
   return utils;
 }
@@ -55,10 +58,15 @@ describe("外壳账号区与登出", () => {
     const user = userEvent.setup();
     await renderApp("/chat");
 
-    await screen.findByText("admin");
+    await waitFor(() => {
+      expect(screen.getByText("admin")).toBeInTheDocument();
+    });
+    // userEvent 自身已包 act：不要把点击再套一层 act（会导致事件派发与 act 冲突）
     await user.click(screen.getByRole("button", { name: "登出" }));
 
-    expect(await screen.findByText("登录 EKB")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("登录 EKB")).toBeInTheDocument();
+    });
     expect(getAccessToken()).toBeNull();
     expect(useSessionStore.getState().status).toBe("anonymous");
   });

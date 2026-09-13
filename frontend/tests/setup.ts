@@ -3,6 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll } from "vitest";
 
+import { useSessionStore } from "@/features/auth/session-store";
 import { resetSession } from "@/lib/api/session";
 
 import { server } from "./msw/server";
@@ -41,6 +42,9 @@ afterEach(() => {
   cleanup();
   server.resetHandlers();
   resetSession();
+  // 会话状态是全局 store：不重置会让上一条用例的"匿名/已登录"渗到下一条，
+  // 守卫据此提前跳转（表现为用例单独跑通过、整文件跑失败）
+  useSessionStore.getState().reset();
 });
 
 afterAll(() => {
