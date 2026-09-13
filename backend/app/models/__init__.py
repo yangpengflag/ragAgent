@@ -6,6 +6,16 @@
 from __future__ import annotations
 
 from app.models.base import Base, BaseModel
+from app.models.knowledge_base import KnowledgeBase
 from app.models.user import Account, SystemRole
+from app.models.user_kb_grant import KbRole, UserKbGrant
 
-__all__ = ["Account", "Base", "BaseModel", "SystemRole"]
+__all__ = [
+    "Account",
+    "Base",
+    "BaseModel",
+    "KbRole",
+    "KnowledgeBase",
+    "SystemRole",
+    "UserKbGrant",
+]

@@ -82,6 +82,40 @@ def role_of(
     return None if grant is None else grant.role
 
 
+def kb_ids_for_user(session: Session, *, user_id: uuid.UUID) -> list[str]:
+    """用户在业务库中的全部有效授权（检索阶段过滤的输入）。
+
+    必须**显式排除已软删的知识库**：软删过滤只在知识库作为主实体时由全局钩子
+    附加，JOIN 场景不会自动带上；漏掉这一条件是"库已删仍被检索"的越权窗口。
+    """
+    rows = session.execute(
+        select(UserKbGrant.kb_id)
+        .join(KnowledgeBase, KnowledgeBase.id == UserKbGrant.kb_id)
+        .where(
+            UserKbGrant.user_id == user_id,
+            KnowledgeBase.deleted_at.is_(None),
+        )
+    ).scalars().all()
+    return [str(kb_id) for kb_id in rows]
+
+
+def can_access_kb(session: Session, *, user_id: uuid.UUID, kb_id: uuid.UUID) -> bool:
+    """二次鉴权：用户当前是否可访问该知识库（软删库一律不可访问）。
+
+    供返回引用 / chunk 原文前复核使用——检索阶段过滤之外的一道独立校验。
+    """
+    row = session.execute(
+        select(UserKbGrant.kb_id)
+        .join(KnowledgeBase, KnowledgeBase.id == UserKbGrant.kb_id)
+        .where(
+            UserKbGrant.user_id == user_id,
+            UserKbGrant.kb_id == kb_id,
+            KnowledgeBase.deleted_at.is_(None),
+        )
+    ).first()
+    return row is not None
+
+
 def list_members(session: Session, kb_id: uuid.UUID) -> list[tuple[Account, KbRole]]:
     """列出某库的成员及其角色（按用户名排序，保证结果稳定）。"""
     rows = session.execute(
