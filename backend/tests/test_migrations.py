@@ -186,7 +186,9 @@ def test_users_table_uniqueness_semantics_on_mysql(prepared_test_database):
                 ),
                 {"db": _test_database_name()},
             ).scalar_one()
-            assert "GENERATED" in generated.upper(), f"username_active 应为生成列，实际: {generated}"
+            assert "GENERATED" in generated.upper(), (
+                f"username_active 应为生成列，实际: {generated}"
+            )
 
             non_unique = connection.execute(
                 text(

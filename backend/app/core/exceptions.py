@@ -20,6 +20,7 @@ class ErrorCode:
     BAD_REQUEST = "bad_request"
     METHOD_NOT_ALLOWED = "method_not_allowed"
     UNAUTHORIZED = "unauthorized"
+    TOKEN_EXPIRED = "token_expired"
     ACCESS_DENIED = "access_denied"
     CONFLICT = "conflict"
     FILE_TOO_LARGE = "file_too_large"
@@ -45,6 +46,14 @@ class NotFoundError(AppError):
 
     status_code = HTTPStatus.NOT_FOUND
     error_code = ErrorCode.NOT_FOUND
+
+
+class TokenExpiredError(AppError):
+    """令牌已过期。与"签名无效/格式非法"区分（401 `token_expired`）：
+    客户端可凭刷新令牌恢复，其余 401 一律要求重新登录。"""
+
+    status_code = HTTPStatus.UNAUTHORIZED
+    error_code = ErrorCode.TOKEN_EXPIRED
 
 
 class ConfigurationError(Exception):
