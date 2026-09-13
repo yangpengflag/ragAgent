@@ -21,11 +21,23 @@
 
 ## 3. 账号模型与迁移
 
-- [ ] 3.1 红灯：写测试——创建 `Account` 后自动获得主键、创建/更新时间与空软删标记，`session_epoch` 初始为 0；`username` 冲突抛出可识别的业务异常
-- [ ] 3.2 绿灯：实现 `Account` 模型（`username`、`display_name`、`password_hash`、`is_active`、`system_role`、`session_epoch`，继承 `BaseModel`）
-- [ ] 3.3 绿灯：生成 Alembic 迁移（建表 + **部分唯一索引** `username WHERE deleted_at IS NULL` + `deleted_at` 索引）
-- [ ] 3.4 红灯：写测试——软删某账号后可用同一用户名创建新账号，且登录命中新账号
-- [ ] 3.5 验证：迁移可重复执行且可回滚（沿用既有测试库守卫，不误伤开发库）
+- [x] 3.1 红灯：写测试——创建 `Account` 后自动获得主键、创建/更新时间与空软删标记，`session_epoch` 初始为 0；`username` 冲突抛出可识别的业务异常（模型层抛 `IntegrityError`，业务异常包装在 §5/§6 完成）
+- [x] 3.2 绿灯：实现 `Account` 模型（`username`、`display_name`、`password_hash`、`is_active`、`system_role`、`session_epoch`，继承 `BaseModel`）
+- [x] 3.3 绿灯：生成 Alembic 迁移（建表 + 唯一约束 `username_active` + `deleted_at` 索引）
+
+    > **实现偏离 §3.3 字面**：任务要求「部分唯一索引 `username WHERE deleted_at IS NULL`」。
+    > MySQL **不支持**部分索引（带 WHERE 的唯一索引），SQLite/Postgres 支持。
+    > 改用「虚拟生成列 `CASE WHEN deleted_at IS NULL THEN username ELSE NULL END`
+    > + 唯一索引 `uk_users_username_active`」实现同样语义：活跃行唯一、软删行为 NULL
+    > （唯一索引允许多个 NULL）。详见 commit message 与 `notes/scaffold/residual-risks.md` 第 5 条。
+- [x] 3.4 红灯：写测试——软删某账号后可用同一用户名创建新账号，且登录命中新账号
+- [x] 3.5 验证：迁移可重复执行且可回滚（沿用既有测试库守卫，不误伤开发库）
+
+    > **附带的 bug 修复**：写 §3 测试时发现 `do_orm_execute` 里用 `with_loader_criteria`
+    > 给 statement.options(...) 时，**`Session.get()` 不受影响**（SQLAlchemy 2.0
+    > fast-path 跳过 options 传播）。改为直接 `state.statement.where(deleted_at IS NULL)`
+    > 同时覆盖 `select()` 与 `Session.get()`；后者在软删行上抛 `ObjectDeletedError`
+    > （对调用方语义更明确：PK 已不存在）。
 
 ## 4. 密码与令牌原语（纯函数，零 I/O）
 
