@@ -20,12 +20,12 @@
 
 ## 4. HTTP 接口
 
-- [ ] 4.1 红灯：写路由测试——KB CRUD 五接口的状态码、响应形状与权限（`ADMIN` 全量、`KB_ADMIN` 本库）
-- [ ] 4.2 绿灯：`/api/v1/knowledge-bases` 路由与 `require_kb_role` 依赖
-- [ ] 4.3 红灯：写路由测试——成员授权四接口
-- [ ] 4.4 绿灯：成员授权路由
+- [x] 4.1 红灯：写路由测试——KB CRUD 五接口的状态码、响应形状与权限（`ADMIN` 全量、`KB_ADMIN` 本库）
+- [x] 4.2 绿灯：`/api/v1/knowledge-bases` 路由与 `require_kb_role` 依赖
+- [x] 4.3 红灯：写路由测试——成员授权四接口
+- [x] 4.4 绿灯：成员授权路由
 
 ## 5. 门禁与收尾
 
-- [ ] 5.1 `uv run pytest` 全绿、`ruff check .` 与 `mypy app` 零错误
-- [ ] 5.2 同步 `openspec/specs/knowledge-base/spec.md` 并归档本 change
+- [x] 5.1 `uv run pytest` 全绿、`ruff check .` 与 `mypy app` 零错误
+- [x] 5.2 同步 `openspec/specs/knowledge-base/spec.md` 并归档本 change

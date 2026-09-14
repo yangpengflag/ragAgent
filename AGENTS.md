@@ -4,16 +4,16 @@
 >
 > 权威规格见 [`openspec/project.md`](openspec/project.md)。本文件说明**协作方式**：多 IDE 适配、硬规则、目录入口、仓结构。
 
-## 多 IDE 适配说明（Qoder / CodeBuddy / Claude / ZCode）
+## 多 IDE 适配说明（Qoder / CodeBuddy / Claude / ZCode / Trae）
 
-本项目同时适配 **Qoder**、**CodeBuddy**、**Claude**（Claude Code）与 **ZCode** 四款 AI IDE。四者的 Harness 配置与 OpenSpec 产物**内容完全镜像**，仅目录名不同：
+本项目同时适配 **Qoder**、**CodeBuddy**、**Claude**（Claude Code）、**ZCode** 与 **Trae** 五款 AI IDE。五者的 Harness 配置与 OpenSpec 产物**内容完全镜像**，仅目录名不同：
 
-| 用途 | Qoder 路径 | CodeBuddy 路径 | Claude 路径 | ZCode 路径 |
-| --- | --- | --- | --- | --- |
-| 规则 / 命令 / skills / agents | `.qoder/` | `.codebuddy/` | `.claude/` | `.zcode/` |
-| OpenSpec 产物（真相来源） | `openspec/`（四者共用，无差异） | 同左 | 同左 | 同左 |
+| 用途 | Qoder 路径 | CodeBuddy 路径 | Claude 路径 | ZCode 路径 | Trae 路径 |
+| --- | --- | --- | --- | --- | --- |
+| 规则 / 命令 / skills / agents | `.qoder/` | `.codebuddy/` | `.claude/` | `.zcode/` | `.trae/` |
+| OpenSpec 产物（真相来源） | `openspec/`（五者共用，无差异） | 同左 | 同左 | 同左 | 同左 |
 
-> 约定：四款 IDE 的 Harness 配置内容一致；改一处须同步其余三处。后续小节若出现 `<harness>/` 占位符，按你的 IDE 替换为 `.qoder/`、`.codebuddy/`、`.claude/` 或 `.zcode/`。
+> 约定：五款 IDE 的 Harness 配置内容一致；改一处须同步其余四处。后续小节若出现 `<harness>/` 占位符，按你的 IDE 替换为 `.qoder/`、`.codebuddy/`、`.claude/`、`.zcode/` 或 `.trae/`。
 
 ## 硬规则（不可违反）
 
@@ -47,7 +47,7 @@
 
 ```
 ekb/                          ← 单一 git 仓库
-├─ openspec/                  # 四 IDE 共用的规格真相来源
+├─ openspec/                  # 五 IDE 共用的规格真相来源
 │   ├─ project.md
 │   ├─ specs/<capability>/spec.md
 │   ├─ changes/               # 进行中的变更

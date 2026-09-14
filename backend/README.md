@@ -91,4 +91,4 @@ Redis 显式关闭重试（默认重试会把 2s 超时放大到 26s），Milvus
 | 2026-09-12 | `/api/v1/health` 真机 | 200，三组件均 `ok`，`request_id` 头体一致 |
 | 2026-09-12 | 停 Redis 后 `/api/v1/health` | 200，`degraded`，redis `down`（超时原因），MySQL/Milvus 正常 |
 
-详细约定见仓库根 `AGENTS.md` 与 `.codebuddy/rules/backend-conventions.md`。
+详细约定见仓库根 `AGENTS.md` 与 `<harness>/rules/backend-conventions.md`（`<harness>/` 按 IDE 替换）。

@@ -1,6 +1,6 @@
 """统一异常层次与错误码。
 
-约定见 `design.md` D6：异常层次保持精简；错误码常量与 `.codebuddy/rules/api-conventions.md`
+约定见 `design.md` D6：异常层次保持精简；错误码常量与 `<harness>/rules/api-conventions.md`
 的错误码表对齐——**状态码→错误码映射表即为这些常量的消费者**，因此并非预防性全量定义。
 配置类异常不面向 HTTP 调用方（启动期使用）。
 """

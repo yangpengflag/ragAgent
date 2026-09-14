@@ -89,7 +89,7 @@ src/
 
 ## 样式
 
-遵循 `.codebuddy/rules/styling-conventions.md`：
+遵循 `<harness>/rules/styling-conventions.md`（`<harness>/` 按 IDE 替换，见根 `AGENTS.md`）：
 
 - Tailwind CSS 4（`src/styles.css` 中的 `@theme` 定义 Design Token），不写内联样式
 - shadcn/ui 基础组件位于 `src/components/ui/`，**不定制样式、不加业务逻辑**；样式差异通过 `className` 覆盖

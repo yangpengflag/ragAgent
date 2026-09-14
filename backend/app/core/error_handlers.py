@@ -21,7 +21,7 @@ from app.core.request_context import request_id_var
 REQUEST_ID_HEADER = "X-Request-ID"
 
 # 框架抛出的 HTTPException（如未知路由 404）也要落入统一信封。
-# 映射与 .codebuddy/rules/api-conventions.md 的错误码表保持一致。
+# 映射与 <harness>/rules/api-conventions.md 的错误码表保持一致。
 _ERROR_CODE_BY_STATUS: dict[int, str] = {
     400: ErrorCode.BAD_REQUEST,
     401: ErrorCode.UNAUTHORIZED,

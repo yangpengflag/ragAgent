@@ -116,6 +116,14 @@ def can_access_kb(session: Session, *, user_id: uuid.UUID, kb_id: uuid.UUID) -> 
     return row is not None
 
 
+def get_member(session: Session, *, user_id: uuid.UUID) -> Account:
+    """按 id 取成员账号（供响应组装）；不存在 → 404。"""
+    account = session.get(Account, user_id)
+    if account is None:
+        raise NotFoundError("用户不存在")
+    return account
+
+
 def list_members(session: Session, kb_id: uuid.UUID) -> list[tuple[Account, KbRole]]:
     """列出某库的成员及其角色（按用户名排序，保证结果稳定）。"""
     rows = session.execute(

@@ -124,7 +124,7 @@ async function discard(response: Response): Promise<void> {
 /**
  * 服务端未给出 `error_code` 时的兜底。
  *
- * 与后端 `.codebuddy/rules/api-conventions.md` 的错误码表逐条对齐
+ * 与后端 `<harness>/rules/api-conventions.md` 的错误码表逐条对齐
  * （后端 `error_handlers.py::_error_code_for_status` 是同一张表），
  * 保证调用方按 `error_code` 分支时不会因来源不同而误判。
  */

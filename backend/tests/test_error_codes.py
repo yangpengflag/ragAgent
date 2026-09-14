@@ -2,7 +2,7 @@
 
 P2-E 的核心语义是「状态码与错误码必须一致，503 不得给 internal_error」，
 必须有回归锁定，否则改动映射表不会被察觉。
-映射目标见 `.codebuddy/rules/api-conventions.md` 的错误码表。
+映射目标见 `<harness>/rules/api-conventions.md` 的错误码表。
 """
 
 from __future__ import annotations
