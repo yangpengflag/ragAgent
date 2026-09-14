@@ -17,6 +17,7 @@ from langchain_core.embeddings import Embeddings
 from langchain_milvus import Milvus
 
 from app.core.config import Settings
+from app.domain.retrieval.embedding_semantics import TEXT_TYPE_DOCUMENT
 from app.integrations.embeddings import build_embeddings
 
 
@@ -83,7 +84,7 @@ def write_chunk_vectors(
     主键 `chunk_id` / 分区键 `kb_id` / `document_id` 全部落在 metadata（实体字段），
     与 schema 对齐；正文经 `texts` 参数落到 `content`。
     """
-    embeddings = build_embeddings(settings)
+    embeddings = build_embeddings(settings, text_type=TEXT_TYPE_DOCUMENT)
     store = build_vectorstore(settings, embeddings)
     store.add_texts(
         texts=[row.content for row in rows],

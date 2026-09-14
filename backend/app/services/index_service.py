@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,6 +24,7 @@ from app.models import Chunk, KnowledgeBase
 from app.models.base import utcnow
 from app.models.document import Document, DocumentStatus
 from app.models.ingest_job import IngestJob, IngestJobStatus
+from app.services.commit_point import commit_stage
 
 logger = get_logger()
 
@@ -49,14 +52,21 @@ def _recallable_rows(session: Session, document: Document) -> list[ChunkVectorRo
     ]
 
 
-def resolve_indexing(session: Session, document: Document) -> bool:
+def resolve_indexing(
+    session: Session,
+    document: Document,
+    *,
+    commit: Callable[[], None] | None = None,
+) -> bool:
     """驱动一次向量化：`PARSED → EMBEDDING → READY / FAILED`，并同步 `ingest_job`。
 
-    - 入口校验：非 `PARSED` 短路（幂等，状态即重放护栏）；已 `READY` 短路
+    - 入口校验：`PARSED` 或 `EMBEDDING`（且含可召回 chunk）才推进——`EMBEDDING` 残留
+      表示上次向量化未完成，允许重放（写前先清同文档旧向量，收敛为只剩本批次）
+    - 阶段提交：置 `EMBEDDING` + job `RUNNING` 后**立即提交**，使进行中状态对外可见
     - 成功：先显式建 collection、幂等清旧向量，再编码写 Milvus → `READY`
     - 失败：文档与 job 均置 `FAILED` 并记错误，不留半套索引
     """
-    if document.status != DocumentStatus.PARSED:
+    if document.status not in (DocumentStatus.PARSED, DocumentStatus.EMBEDDING):
         return False
     rows = _recallable_rows(session, document)
     if not rows:
@@ -71,6 +81,7 @@ def resolve_indexing(session: Session, document: Document) -> bool:
     job.status = IngestJobStatus.RUNNING
     job.started_at = utcnow()
     document.status = DocumentStatus.EMBEDDING
+    commit_stage(session, commit)
 
     # D6 禁止混维度：库声明维度必须与全局配置一致，否则显式拒绝（fail-fast 于写 Milvus 前）
     if (dim_mismatch := _dim_mismatch(session, document, settings)) is not None:

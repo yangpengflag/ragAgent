@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Iterator
+from typing import Any
 
 import pytest
 from dotenv import dotenv_values
@@ -123,6 +124,28 @@ class FakeProbe:
 
 def _probes(*specs: tuple[str, bool, str | None]) -> list[FakeProbe]:
     return [FakeProbe(name, ok, error) for name, ok, error in specs]
+
+
+@pytest.fixture
+def commit_spy() -> Callable[..., Any]:
+    """构造「阶段提交」替身：记录每次提交发生时的文档状态并 `flush`（不真正提交）。
+
+    入库三阶段的瞬态可见性要求「状态在外部 I/O 之前已提交」——注入本替身后，
+    可断言进入 I/O 时 `statuses` 已非空且末项为该阶段的瞬态状态。
+    """
+
+    def build(session: Session, document: Any) -> Any:
+        class _Spy:
+            def __init__(self) -> None:
+                self.statuses: list[Any] = []
+
+            def __call__(self) -> None:
+                self.statuses.append(document.status)
+                session.flush()
+
+        return _Spy()
+
+    return build
 
 
 @pytest.fixture

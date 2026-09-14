@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from app.models import Chunk
 from app.models.base import utcnow
 from app.models.document import Document, DocumentStatus
 from app.models.ingest_job import IngestJob, IngestJobStatus
+from app.services.commit_point import commit_stage
 
 # 上传格式白名单（design D8：收敛为 MinerU 云端 API 真正支持的 pdf / docx）
 DEFAULT_ALLOWED_EXTS = frozenset({"pdf", "docx"})
@@ -128,14 +130,19 @@ def resolve_parse(
     document: Document,
     storage: FileStorage,
     mineru: MineruClient,
+    *,
+    commit: Callable[[], None] | None = None,
 ) -> None:
-    """驱动一次解析：`UPLOADED → PARSED / FAILED`，并同步 `ingest_job`。
+    """驱动一次解析：`UPLOADED → PARSING → PARSED / FAILED`，并同步 `ingest_job`。
 
-    - 入口校验：非 `UPLOADED` 直接返回（幂等，design D6 —— 状态即重放护栏）
+    - 入口校验：`UPLOADED` 或 `PARSING` 才推进。`PARSING` 表示上次解析未完成
+      （进程被杀留下的残留）→ 允许重放，避免文档永久卡死；其余状态短路（幂等）
+    - 阶段提交：置 `PARSING` + job `RUNNING` 后**立即提交**，使并发只读查询能观测到
+      进行中状态（spec：瞬态状态必须在长任务进入外部 I/O 之前对外可见）
     - 成功：产物先落盘拿到 `artifact_path`，再置 `PARSED`，job → `SUCCESS`
     - 失败：文档与 job 均置 `FAILED` 并记错误信息（job 是状态真相）
     """
-    if document.status != DocumentStatus.UPLOADED:
+    if document.status not in (DocumentStatus.UPLOADED, DocumentStatus.PARSING):
         return
 
     raw_path = document.raw_path
@@ -148,6 +155,8 @@ def resolve_parse(
         raise RuntimeError("缺失 ingest_job，入库任务无法推进")
     job.status = IngestJobStatus.RUNNING
     job.started_at = utcnow()
+    document.status = DocumentStatus.PARSING
+    commit_stage(session, commit)
 
     try:
         result = mineru.parse(filename=document.filename, data=storage.open_raw(raw_path))

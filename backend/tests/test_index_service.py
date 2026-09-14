@@ -259,3 +259,51 @@ def test_clear_document_vectors_failure_is_non_blocking(monkeypatch):
 
     # 清向量失败不抛错（仅记日志），软删主流程不中断
     index_service.clear_document_vectors(object(), "kb-1", "doc-1")
+
+
+# ------------------- 瞬态可见性与中断重放（fix-ingest-state-and-embedding-contract）
+
+
+def test_indexing_commits_embedding_before_vector_io(
+    sqlite_session: Session,
+    kb: KnowledgeBase,
+    storage: LocalFileStorage,
+    monkeypatch: pytest.MonkeyPatch,
+    commit_spy,
+):
+    """瞬态 `EMBEDDING` 必须在首次接触向量库（`ensure_collection`）**之前**提交。"""
+    doc = _parsed_doc_with_chunks(sqlite_session, kb, storage)
+    spy = commit_spy(sqlite_session, doc)
+    observed: list[tuple[DocumentStatus, int]] = []
+
+    def recording_ensure(*a, **k) -> None:
+        observed.append((doc.status, len(spy.statuses)))
+
+    monkeypatch.setattr(milvus_integration, "ensure_collection", recording_ensure)
+    monkeypatch.setattr(milvus_integration, "delete_document_vectors", lambda *a, **k: None)
+    monkeypatch.setattr(vectorstore_integration, "write_chunk_vectors", lambda *a, **k: None)
+
+    index_service.resolve_indexing(sqlite_session, doc, commit=spy)
+
+    assert spy.statuses
+    assert spy.statuses[0] == DocumentStatus.EMBEDDING
+    assert observed
+    assert observed[0][0] == DocumentStatus.EMBEDDING
+    assert observed[0][1] >= 1
+    assert doc.status == DocumentStatus.READY
+
+
+def test_resolve_indexing_replays_from_embedding(
+    sqlite_session: Session, kb: KnowledgeBase, storage: LocalFileStorage, monkeypatch
+):
+    """`EMBEDDING` 残留（向量化中进程被杀）必须可重放，且先清旧向量再写。"""
+    doc = _parsed_doc_with_chunks(sqlite_session, kb, storage)
+    doc.status = DocumentStatus.EMBEDDING
+    sqlite_session.flush()
+    calls = _patch_vector_ops(monkeypatch)
+
+    assert index_service.resolve_indexing(sqlite_session, doc) is True
+    assert doc.status == DocumentStatus.READY
+    assert calls["ensure"] == 1
+    assert calls["delete"] == 1
+    assert len(calls["write"]) == 1

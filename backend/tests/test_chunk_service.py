@@ -262,3 +262,54 @@ def test_full_ingest_chain_and_soft_delete_hides_doc_and_chunks(
     document_service.soft_delete_document(sqlite_session, kb.id, doc.id)
     assert document_service.list_documents(sqlite_session, kb.id) == []
     assert _chunks_of(sqlite_session, doc.id) == []
+
+
+# ------------------- 瞬态可见性与中断重放（fix-ingest-state-and-embedding-contract）
+
+
+def test_chunking_commits_chunking_before_reading_artifact(
+    sqlite_session: Session,
+    kb: KnowledgeBase,
+    storage: LocalFileStorage,
+    commit_spy,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """瞬态 `CHUNKING` 必须在读取解析产物（外部 I/O 同类）**之前**提交。"""
+    doc = _parsed_doc(sqlite_session, kb, storage)
+    spy = commit_spy(sqlite_session, doc)
+    observed: list[tuple[DocumentStatus, int]] = []
+    real_open = storage.open_artifact
+
+    def recording_open(rel_path: str) -> bytes:
+        observed.append((doc.status, len(spy.statuses)))
+        return real_open(rel_path)
+
+    monkeypatch.setattr(storage, "open_artifact", recording_open)
+
+    chunk_service.resolve_chunking(
+        sqlite_session, doc, storage, cfg=_cfg(), counter=WordCounter(), commit=spy
+    )
+
+    assert spy.statuses
+    assert spy.statuses[0] == DocumentStatus.CHUNKING
+    assert observed
+    assert observed[0][0] == DocumentStatus.CHUNKING
+    assert observed[0][1] >= 1
+    assert doc.status == DocumentStatus.PARSED
+
+
+def test_resolve_chunking_replays_from_chunking_without_chunks(
+    sqlite_session: Session, kb: KnowledgeBase, storage: LocalFileStorage
+):
+    """`CHUNKING` 残留（切分中进程被杀、无 chunks）必须可重放。"""
+    doc = _parsed_doc(sqlite_session, kb, storage)
+    doc.status = DocumentStatus.CHUNKING
+    sqlite_session.flush()
+
+    ran = chunk_service.resolve_chunking(
+        sqlite_session, doc, storage, cfg=_cfg(), counter=WordCounter()
+    )
+
+    assert ran is True
+    assert doc.status == DocumentStatus.PARSED
+    assert len(_chunks_of(sqlite_session, doc.id)) >= 2

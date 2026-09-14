@@ -2,7 +2,8 @@
 
 `document_parse(document_id)` 是 Celery 薄壳：自建会话 + 装配存储/MinerU，
 调度真正的编排逻辑 `_parse_document` 并把状态推进到 MySQL（真相来源）。
-任务体不感知 HTTP；重入/并发由状态护栏（仅 `UPLOADED` 才推进）兜底。
+任务体不感知 HTTP；重入/并发由状态护栏兜底——`UPLOADED`/`PARSING` 均可推进，
+瞬态残留可重放（fix-ingest-state-and-embedding-contract）。
 """
 
 from __future__ import annotations
@@ -32,9 +33,15 @@ def _parse_document(
     storage: LocalFileStorage,
     mineru: MineruClient,
 ) -> bool:
-    """推进一次解析；非 `UPLOADED` 或文档缺失 → 短路返回 False（幂等）。"""
+    """推进一次解析；`UPLOADED` 或 `PARSING` 才进入，其余状态与文档缺失短路（幂等）。
+
+    `PARSING` 是"上次解析未完成"的残留（进程被杀）：必须放行，否则中断文档会永久卡死。
+    """
     document = session.get(Document, document_id)
-    if document is None or document.status != DocumentStatus.UPLOADED:
+    if document is None or document.status not in (
+        DocumentStatus.UPLOADED,
+        DocumentStatus.PARSING,
+    ):
         return False
     document_service.resolve_parse(session, document, storage, mineru)
     return True
@@ -59,12 +66,16 @@ def _schedule_chunk(document_id: str, *, is_parsed: bool) -> bool:
 
 
 def _is_embeddable(session: Session, document_id: uuid.UUID) -> bool:
-    """文档是否为可向量化的准备态（`PARSED` 且含 `is_recallable` chunk）。
+    """文档是否为可向量化的准备态（`PARSED` 或 `EMBEDDING` 且含 `is_recallable` chunk）。
 
     状态与原料是否就绪一起判定（重放幂等：仅就绪才分派向量化任务）。
+    放行 `EMBEDDING` 是为了让"向量化中被中断"的文档也能被重新分派（可重放）。
     """
     document = session.get(Document, document_id)
-    if document is None or document.status != DocumentStatus.PARSED:
+    if document is None or document.status not in (
+        DocumentStatus.PARSED,
+        DocumentStatus.EMBEDDING,
+    ):
         return False
     has_recallable = session.scalar(
         select(1)
@@ -137,7 +148,7 @@ def _build_mineru() -> MineruClient:
 
 @celery.task(name="document_parse", bind=True, max_retries=0)
 def document_parse(self, document_id: str) -> None:
-    """解析一篇 `UPLOADED` 文档并推进状态；解析成功后分派切分任务。
+    """解析一篇 `UPLOADED` / `PARSING` 文档并推进状态；解析成功后分派切分任务。
 
     错误均已写入文档与 job，不重试。`IngestJob` 是入库进度的真相来源：
     RESOLVE → `PARSED`（job stage `PARSE`）→ commit 后按状态分派 `document_chunk`。
@@ -158,7 +169,7 @@ def document_parse(self, document_id: str) -> None:
 
 @celery.task(name="document_chunk", bind=True, max_retries=0)
 def document_chunk(self, document_id: str) -> None:
-    """切分一篇 `PARSED` 文档并落 chunks；已切分 / `FAILED` 短路幂等。
+    """切分一篇 `PARSED` / `CHUNKING` 文档并落 chunks；已切分 / `FAILED` 短路幂等。
 
     结论写入文档、job 与 `chunks`（同为 MySQL 事务），不重试。
     切分成功后若原料就绪（`PARSED` 且含 recallable chunks），分派向量化任务。
@@ -179,7 +190,7 @@ def document_chunk(self, document_id: str) -> None:
 
 @celery.task(name="document_embed", bind=True, max_retries=0)
 def document_embed(self, document_id: str) -> None:
-    """向量化一篇原料就绪（`PARSED` 且含 chunks）文档并写 Milvus → `READY`。
+    """向量化一篇原料就绪（`PARSED` / `EMBEDDING` 且含 chunks）文档并写 Milvus → `READY`。
 
     非就绪 / 已 `READY` / `FAILED` 短路幂等；状态与 `ingest_job` 由 `index_service`
     推进（MySQL 为真相），失败置 `FAILED`，不重试（可修复后重放）。

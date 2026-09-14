@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -30,6 +31,7 @@ from app.models import Chunk
 from app.models.base import utcnow
 from app.models.document import Document, DocumentStatus
 from app.models.ingest_job import IngestJob, IngestJobStatus
+from app.services.commit_point import commit_stage
 
 logger = get_logger()
 
@@ -41,14 +43,17 @@ def resolve_chunking(
     *,
     cfg: ChunkConfig | None = None,
     counter: TokenCounter | None = None,
+    commit: Callable[[], None] | None = None,
 ) -> bool:
     """驱动一次切分：`PARSED → CHUNKING → PARSED / FAILED`，并同步 `ingest_job`。
 
-    - 入口校验：非 `PARSED` 直接返回（幂等）；已切分（已有 chunks）短路（幂等）
+    - 入口校验：`PARSED` 或 `CHUNKING`（且尚未产出 chunks）才推进——`CHUNKING` 残留
+      表示上次切分未完成，允许重放；其余状态或已切分短路（幂等）
+    - 阶段提交：置 `CHUNKING` + job `RUNNING` 后**立即提交**，使进行中状态对外可见
     - 成功：chunks 一次落库，文档回 `PARSED`，job → `SUCCESS`（stage `CHUNK`）
     - 失败：文档与 job 均置 `FAILED` 并记错误，不留半套 chunks
     """
-    if document.status != DocumentStatus.PARSED:
+    if document.status not in (DocumentStatus.PARSED, DocumentStatus.CHUNKING):
         return False
     if _has_chunks(session, document.id):
         logger.info("chunking skipped: already chunked", document_id=str(document.id))
@@ -61,6 +66,7 @@ def resolve_chunking(
     job.status = IngestJobStatus.RUNNING
     job.started_at = utcnow()
     document.status = DocumentStatus.CHUNKING
+    commit_stage(session, commit)
 
     try:
         if document.artifact_path is None:

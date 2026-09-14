@@ -132,3 +132,22 @@ def test_failure_marks_doc_and_job_failed(
     assert job is not None
     assert job.status == IngestJobStatus.FAILED
     assert job.error == "上游超时"
+
+
+# ------------------- 中断重放：任务层护栏（fix-ingest-state-and-embedding-contract）
+
+
+def test_task_replays_document_left_in_parsing(
+    sqlite_session: Session, kb: KnowledgeBase, storage: LocalFileStorage
+):
+    """任务层白名单必须放行 `PARSING`——否则中断文档在到达服务层前就被拦掉。"""
+    doc = _uploaded(sqlite_session, kb, storage)
+    doc.status = DocumentStatus.PARSING
+    sqlite_session.flush()
+    mineru = FakeMineru()
+
+    ran = _parse_document(sqlite_session, doc.id, storage, mineru)
+
+    assert ran is True
+    assert doc.status == DocumentStatus.PARSED
+    assert mineru.calls == ["政策.pdf"]
