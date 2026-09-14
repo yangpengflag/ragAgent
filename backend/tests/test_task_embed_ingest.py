@@ -174,6 +174,20 @@ def test_is_embeddable_false_when_not_parsed(
     assert _is_embeddable(sqlite_session, doc.id) is False
 
 
+def test_is_embeddable_true_when_embedding_in_progress(
+    sqlite_session: Session, kb: KnowledgeBase, storage: LocalFileStorage
+):
+    """`EMBEDDING` 残留（向量化中被中断）必须仍判定为可向量化 → 可重新分派。
+
+    否则中断文档虽"理论上可重放"，却没有任何分派路径能把它再推起来。
+    """
+    doc = _parsed_doc_with_chunks(sqlite_session, kb, storage)
+    doc.status = DocumentStatus.EMBEDDING
+    sqlite_session.flush()
+
+    assert _is_embeddable(sqlite_session, doc.id) is True
+
+
 def test_schedule_embed_dispatches_when_ready(monkeypatch: pytest.MonkeyPatch):
     calls: list[str] = []
     from app.tasks import ingest as ingest_module

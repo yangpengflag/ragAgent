@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.exceptions import UpstreamError
 from app.integrations.mineru import ParseResult
@@ -168,4 +168,45 @@ def test_resolve_parse_replays_from_parsing(
     document_service.resolve_parse(sqlite_session, doc, storage, mineru)
 
     assert mineru.calls == ["政策.pdf"]
+    assert doc.status == DocumentStatus.PARSED
+
+
+def test_parse_stage_state_visible_to_another_session(
+    sqlite_session: Session,
+    sqlite_engine,
+    kb: KnowledgeBase,
+    storage: LocalFileStorage,
+):
+    """spec「进行中状态可被并发查询观测」的直接验证。
+
+    与上一个用例不同：这里**不注入提交替身**（走默认提交路径），并另开一个会话
+    在外部 I/O 期间读取状态——spy 只能证明"提交被调用过"，只有跨会话读取才能证明
+    "提交真的让状态对外可见"。
+    """
+    doc = _uploaded(sqlite_session, kb, storage)
+    observed: list[tuple[object, object]] = []
+    other = sessionmaker(bind=sqlite_engine, expire_on_commit=False)()
+
+    class ObservingMineru:
+        def parse(self, *, filename: str, data: bytes) -> ParseResult:
+            observed.append(
+                (
+                    other.get(Document, doc.id).status,
+                    other.scalar(
+                        select(IngestJob.status).where(
+                            IngestJob.document_id == doc.id
+                        )
+                    ),
+                )
+            )
+            # 结束只读事务：SQLite 测试库共用单连接，避免与写入会话交错
+            other.rollback()
+            return ParseResult(content_list=b'{"blocks": [{"type": "text"}]}')
+
+    try:
+        document_service.resolve_parse(sqlite_session, doc, storage, ObservingMineru())
+    finally:
+        other.close()
+
+    assert observed == [(DocumentStatus.PARSING, IngestJobStatus.RUNNING)]
     assert doc.status == DocumentStatus.PARSED
