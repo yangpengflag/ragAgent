@@ -130,5 +130,5 @@ Milvus search → 领域契约 RetrievedChunk → services
 
 0. **未授权内容的处置策略（已定：fail-closed + 专用安全异常）**：检索结果若出现授权集合外的 kb_id，说明过滤机制本身失效，本批结果整体不可信 → 中断本次检索，抛 `SecurityViolationError`（500 `security_violation`），越权 chunk_id 只进日志（带 request_id）供告警，**不进响应体**（统一错误信封会把 `details` 原样写出）。授权 TTL 缓存维持默认关闭（直查，撤销零延迟），10k 上限保留作运维杠杆。
 1. **请求级 tracing 的运行时接线未随本 change 落地**：已交付决策纯函数 `resolve_request_tracing`，但真正的 `tracing_context` 包裹需要请求上下文与管理员调试标记通道，随 **QA 端点 change** 一并接线。spec 场景「进程关闭 + 请求标记开启 → 仅该请求产生 trace」目前只在决策层验证，**运行时验证归 QA change**。
-2. **collection 度量方式契约（ingest 侧 MUST）**：`retriever` 按 `score = 1 - distance` 换算，仅对 **COSINE** 成立。ingest change 创建 collection 时 MUST 使用 COSINE 度量，否则 `RetrievedChunk.score` 将超出 [-1, 1] 而被契约拒绝（显式失败，非静默错误）。
+2. **collection 度量方式契约（ingest 侧 MUST）**：`retriever` 取 `score = distance`（Milvus **COSINE** 度量直接返回余弦相似度，相同向量 = 1.0），`RetrievedChunk.score` 落在 [-1, 1] 契约内。ingest change 创建 collection 时 MUST 使用 COSINE 度量。（2026-09-14 修正：原假设 `score = 1 - distance` 与实际 Milvus 返回相反，已按真实集成验证改为 `score = distance`。）
 3. **授权 TTL 缓存默认仍关闭**：本 change 只交付能力与有界实现（≤10k 条目 + TTL ≤5s），是否在生产开启由 QA change 依据实测延迟决定。

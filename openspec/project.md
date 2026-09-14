@@ -45,7 +45,7 @@ EKB 把这些文档解析、切分、向量化后建成可检索的知识库，�
 | 术语 | 含义 |
 |---|---|
 | Knowledge Base (KB) | 知识库，权限与检索的隔离单元。记录其 `embedding_model` / `embed_dim` / 切分配置 |
-| Document | 上传的原始文档，唯一归属于一个 KB。状态机：`UPLOADED → PARSING → PARSED → CHUNKING → EMBEDDING → READY / FAILED` |
+| Document | 上传的原始文档，唯一归属于一个 KB。状态机：`UPLOADED → PARSING → PARSED ⇄ CHUNKING → PARSED → EMBEDDING → READY / FAILED`。`PARSED` 复用为"解析 + 切分完成、索引原料就绪"，切分期为 `PARSED → CHUNKING → PARSED` 的转瞬态 |
 | Block | MinerU `content_list.json` 中的一个内容块（`title`/`text`/`list`/`table`/`code`/`image`/`interline_equation`），携带 `text_level` / `page_idx` / `bbox` |
 | Chunk | 切分后的检索单元。**Child chunk** 入向量库供召回，**Parent chunk** 仅存 MySQL 供生成 |
 | Section Path | 章节面包屑，如 `第3章 费用管理 › 3.1 差旅费`，注入每个 chunk 前缀 |

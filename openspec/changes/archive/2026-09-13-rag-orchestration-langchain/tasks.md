@@ -12,14 +12,14 @@
 
 ## 3. 领域契约（纯函数层）
 
-- [ ] 3.1 `domain/` 定义检索契约 dataclass（`RetrievedChunk`：chunk 标识、正文、kb_id、文档/页码定位元数据、得分），零框架依赖；TDD 单测覆盖字段构造与不变量
+- [x] 3.1 `domain/` 定义检索契约 dataclass（`RetrievedChunk`：chunk 标识、正文、kb_id、文档/页码定位元数据、得分），零框架依赖；TDD 单测覆盖字段构造与不变量
 
 ## 4. integrations 组件封装
 
 - [x] 4.1 `integrations/llm.py`：DashScope OpenAI 兼容模式 ChatModel 工厂（base_url/api_key/model 可配置）；TDD：用 langchain-core FakeChatModel 验证工厂装配与配置注入
 - [x] 4.2 `integrations/embeddings.py`：Embeddings 工厂（同一 compatible-mode 入口，1024 维模型可配置）；TDD：FakeEmbeddings 验证装配
 - [x] 4.3 `integrations/vectorstore.py`：langchain-milvus 装配（database `ragagent`、collection 配置、 Milvus 不可用时启动不崩溃由健康检查承接）；TDD：配置注入与构造参数断言（不依赖真实 Milvus）
-- [ ] 4.4 类型边界检查：确认 LangChain 类型不出现在 `domain/` 与 `services/`（ruff 自定义规则或 import 约定文档 + review 清单）
+- [x] 4.4 类型边界检查：确认 LangChain 类型不出现在 `domain/` 与 `services/`（ruff 自定义规则或 import 约定文档 + review 清单）
 
 ## 5. 权限过滤 Retriever
 
@@ -37,9 +37,9 @@
 
 ## 7. 问答链组装与 prompt 入仓
 
-- [ ] 7.1 prompt 模板入仓：`domain/generation/`（或 services 层常量模块）定义仓库内模板常量，含版本注释；确认无运行时外部拉取路径
-- [ ] 7.2 LCEL 问答链组装（services 层）：retriever → prompt → llm → parser，支持流式（astream）；引用脚注占位（[n] 标注逻辑归后续 QA change，此处仅透传 RetrievedChunk 元数据）；TDD：FakeChatModel/FakeEmbeddings + mock retriever 全链路单测
-- [ ] 7.3 断网验收测试：除模型 API（Fake 替身）外无外网依赖，链路正常（对应 spec "无外网提示词服务时链路可用" 场景）
+- [x] 7.1 prompt 模板入仓：`domain/generation/`（或 services 层常量模块）定义仓库内模板常量，含版本注释；确认无运行时外部拉取路径
+- [x] 7.2 LCEL 问答链组装（services 层）：retriever → prompt → llm → parser，支持流式（astream）；引用脚注占位（[n] 标注逻辑归后续 QA change，此处仅透传 RetrievedChunk 元数据）；TDD：FakeChatModel/FakeEmbeddings + mock retriever 全链路单测
+- [x] 7.3 断网验收测试：除模型 API（Fake 替身）外无外网依赖，链路正常（对应 spec "无外网提示词服务时链路可用" 场景）
 
 ## 8. 质量门禁与收尾
 
