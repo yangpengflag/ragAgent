@@ -56,6 +56,20 @@ class ConflictError(AppError):
     error_code = ErrorCode.CONFLICT
 
 
+class FileTooLargeError(AppError):
+    """上传文件超过大小上限。413 `file_too_large`。"""
+
+    status_code = HTTPStatus.REQUEST_ENTITY_TOO_LARGE
+    error_code = ErrorCode.FILE_TOO_LARGE
+
+
+class UnsupportedFileTypeError(AppError):
+    """上传文件类型不在白名单。415 `unsupported_file_type`。"""
+
+    status_code = HTTPStatus.UNSUPPORTED_MEDIA_TYPE
+    error_code = ErrorCode.UNSUPPORTED_FILE_TYPE
+
+
 class TokenExpiredError(AppError):
     """令牌已过期。与"签名无效/格式非法"区分（401 `token_expired`）：
     客户端可凭刷新令牌恢复，其余 401 一律要求重新登录。"""
@@ -69,6 +83,17 @@ class AccessDeniedError(AppError):
 
     status_code = HTTPStatus.FORBIDDEN
     error_code = ErrorCode.ACCESS_DENIED
+
+
+class UpstreamError(AppError):
+    """外部依赖不可用（MinerU / DashScope / Milvus）。503 `upstream_unavailable`。
+
+    第三方 SDK 的原始异常必须在 integrations 层包装成此异常再向上抛，
+    禁止把 SDK 类型泄漏到上层（`backend-conventions.md` 外部集成铁律）。
+    """
+
+    status_code = HTTPStatus.SERVICE_UNAVAILABLE
+    error_code = ErrorCode.UPSTREAM_UNAVAILABLE
 
 
 class SecurityViolationError(AppError):

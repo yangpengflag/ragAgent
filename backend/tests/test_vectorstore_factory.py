@@ -52,6 +52,17 @@ def test_kwargs_token_omitted_when_unset(isolated_env):
     assert "token" not in kwargs["connection_args"]
 
 
+def test_kwargs_includes_explicit_timeout(isolated_env):
+    """document-embedding-index：Milvus 操作显式超时，禁无限等待。"""
+    settings = isolated_env(
+        MILVUS_URI="http://127.0.0.1:19530", MILVUS_TIMEOUT_SEC="8"
+    )
+
+    kwargs = build_milvus_kwargs(settings)
+
+    assert kwargs["timeout"] == 8.0
+
+
 def test_build_vectorstore_passes_kwargs_and_embeddings(milvus_env, monkeypatch):
     captured: dict = {}
 

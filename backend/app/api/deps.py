@@ -23,8 +23,10 @@ from app.core.db import get_db
 from app.core.exceptions import AccessDeniedError, AppError, TokenExpiredError
 from app.core.request_context import request_id_var
 from app.core.security import TokenType, decode_token
+from app.integrations.storage import FileStorage
 from app.models.user import Account
 from app.services.auth_service import AuthConfig, AuthService, InvalidCredentialsError
+from app.services.document_service import DEFAULT_ALLOWED_EXTS
 from app.services.ports import RateLimitStore, RevocationStore
 
 
@@ -135,3 +137,28 @@ def require_role(*allowed_roles: str) -> Callable[..., Account]:
         return account
 
     return dependency
+
+
+# ---------------------------------------------------------------- 文档上传依赖
+# storage 与上传限额依赖化，便于测试用 `dependency_overrides` 替换为临时目录 / 小限额。
+
+
+@lru_cache
+def get_document_storage() -> FileStorage:
+    """文档文件存储（默认本地文件系统，根目录来自配置）。"""
+    from app.integrations.storage import LocalFileStorage
+
+    return LocalFileStorage(get_settings().storage_local_root)
+
+
+DocumentStorageDep = Annotated[FileStorage, Depends(get_document_storage)]
+
+
+def get_upload_limits() -> tuple[int, frozenset[str]]:
+    """上传大小上限（字节）与格式白名单。"""
+    settings = get_settings()
+    max_bytes = settings.upload_max_size_mb * 1024 * 1024
+    return max_bytes, frozenset(DEFAULT_ALLOWED_EXTS)
+
+
+UploadLimitsDep = Annotated[tuple[int, frozenset[str]], Depends(get_upload_limits)]

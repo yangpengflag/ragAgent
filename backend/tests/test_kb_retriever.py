@@ -113,7 +113,7 @@ def test_results_converted_to_contract():
     assert first.chunk_id == "c1"
     assert first.kb_id == "kb-a"
     assert first.content == "正文内容"
-    assert first.score == pytest.approx(0.85)  # COSINE: 1 - distance(0.15)
+    assert first.score == pytest.approx(0.15)  # COSINE: score 即 Milvus 返回的余弦相似度
     assert first.page_idx == 3
     assert first.bbox == (10.0, 20.0, 30.0, 40.0)
     second = out[1]

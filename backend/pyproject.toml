@@ -20,6 +20,12 @@ dependencies = [
     "langchain-openai>=1.6.2,<1.7",
     "langchain-milvus>=0.4.0,<0.5",
     "langsmith>=0.12.4,<0.13",
+    # 文档上传与解析入库：httpx（MinerU 云 API HTTP 直连）、celery（长任务）、
+    # python-multipart（multipart 上传）；redis 已在上文声明（broker 复用）
+    "httpx>=0.27",
+    "celery>=5.4",
+    "python-multipart>=0.0.9",
+    "tiktoken>=0.14.0",
 ]
 
 [dependency-groups]
@@ -27,7 +33,6 @@ dev = [
     "python-dotenv>=1.0",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
-    "httpx>=0.27",
     "ruff>=0.7",
     "mypy>=1.11",
 ]
@@ -52,8 +57,14 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.12"
 
 [[tool.mypy.overrides]]
-module = ["pymysql.*", "pymilvus.*", "alembic.*"]
+module = ["pymysql.*", "pymilvus.*", "alembic.*", "celery.*"]
 ignore_missing_imports = true
+
+# Celery 任务装饰器无类型桩：`@celery.task` 与 `self` 参数无法静态校验，
+# 属已知第三方限制，放宽该模块的装饰器相关错误码。
+[[tool.mypy.overrides]]
+module = ["app.tasks.*"]
+disable_error_code = ["untyped-decorator", "no-untyped-def"]
 
 [[tool.mypy.overrides]]
 module = ["app.domain.*"]

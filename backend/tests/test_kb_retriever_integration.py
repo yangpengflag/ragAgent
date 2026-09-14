@@ -5,6 +5,7 @@ partition_key + expr 过滤双保险、Document→RetrievedChunk 转换。
 不在离线测试套件的门禁范围内（scaffold R8：套件不得依赖本机中间件）。
 """
 
+import math
 import os
 
 import pytest
@@ -13,6 +14,25 @@ from langchain_core.embeddings.fake import DeterministicFakeEmbedding
 from app.domain.retrieval.contracts import RetrievedChunk
 from app.integrations.retriever import retrieve
 from app.integrations.vectorstore import build_milvus_kwargs
+
+
+class _NormalizedFakeEmbedding(DeterministicFakeEmbedding):
+    """归一化的确定性伪嵌入。
+
+    Milvus COSINE 假定输入为单位向量，未归一化向量会使得分越界 (-1,1)。
+    真实 DashScope 输出已归一化，此处模拟同理，使集成测试不存在于合同语义外。
+    """
+
+    def embed_documents(self, texts):
+        return [_normalize(v) for v in super().embed_documents(texts)]
+
+    def embed_query(self, text):
+        return _normalize(super().embed_query(text))
+
+
+def _normalize(vec):
+    norm = math.sqrt(sum(c * c for c in vec)) or 1.0
+    return [c / norm for c in vec]
 
 try:
     from pymilvus import DataType, MilvusClient
@@ -52,9 +72,10 @@ def store():
         "milvus_database": "ragagent",
         "milvus_collection": COLLECTION,
         "milvus_partition_key": "kb_id",
+        "milvus_timeout_sec": 5,
     })()
 
-    embeddings = DeterministicFakeEmbedding(size=EMBED_DIM)
+    embeddings = _NormalizedFakeEmbedding(size=EMBED_DIM)
     # 清理上次运行残留（langchain-milvus 以首个 batch 推导 schema，残留会污染本轮）
     client = MilvusClient(uri=MILVUS_URI)
     if client.has_collection(COLLECTION):

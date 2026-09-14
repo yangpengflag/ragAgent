@@ -107,3 +107,92 @@ def test_empty_bootstrap_password_is_treated_as_unset(isolated_env):
     settings = isolated_env(BOOTSTRAP_ADMIN_PASSWORD="")
 
     assert settings.bootstrap_admin_password is None
+
+
+def test_document_ingest_defaults(isolated_env):
+    """上传/存储/解析/Celery 相关配置默认值（document-upload-and-parse 2.6）。"""
+    settings = isolated_env()
+
+    assert settings.storage_local_root == "storage"
+    assert settings.mineru_api_base == "https://mineru.net"
+    assert settings.mineru_model_version == "vlm"
+    assert settings.mineru_http_timeout_sec == 60.0
+    assert settings.mineru_poll_interval_sec == 5.0
+    assert settings.mineru_poll_timeout_sec == 900.0
+    assert settings.celery_broker_url == "redis://127.0.0.1:6379/1"
+    assert settings.upload_max_size_mb == 50
+
+
+def test_mineru_api_token_is_hidden_from_repr(isolated_env):
+    """凭据类配置必须 `repr=False`，不得出现在 repr / str 中。"""
+    settings = isolated_env(MINERU_API_TOKEN="super-secret-token")
+
+    rendered = repr(settings) + str(settings)
+    assert "super-secret-token" not in rendered
+
+
+def test_upload_max_size_invalid_raises(isolated_env):
+    """非法数值的配置必须在启动期 fail-fast。"""
+    with pytest.raises(InvalidConfigurationError) as exc_info:
+        isolated_env(UPLOAD_MAX_SIZE_MB="not-a-number")
+
+    assert "UPLOAD_MAX_SIZE_MB" in str(exc_info.value)
+
+
+def test_mineru_api_token_optional_by_default(isolated_env):
+    """MinerU token 是可选项（与 DashScope 同款 lazy fail-fast 语义）。"""
+    settings = isolated_env()
+
+    assert settings.mineru_api_token is None
+
+
+def test_chunk_threshold_config_reads_env(isolated_env):
+    """切分阈值从 `CHUNK_*_TOKENS_*` 读取，且可被 env 覆盖（design D5）。"""
+    settings = isolated_env(
+        CHUNK_TARGET_TOKENS_TEXT="600",
+        CHUNK_MAX_TOKENS_TEXT="900",
+        CHUNK_TARGET_TOKENS_TABLE="1200",
+        CHUNK_MAX_TOKENS_TABLE="2400",
+    )
+
+    assert settings.chunk_target_tokens_text == 600
+    assert settings.chunk_max_tokens_text == 900
+    assert settings.chunk_target_tokens_table == 1200
+    assert settings.chunk_max_tokens_table == 2400
+
+
+def test_chunk_threshold_defaults(isolated_env):
+    """未显式配置时切分档位回落到 project 定稿默认值（design D5 / D6）。"""
+    settings = isolated_env()
+
+    assert settings.chunk_target_tokens_text == 512
+    assert settings.chunk_max_tokens_text == 768
+    assert settings.chunk_target_tokens_list == 512
+    assert settings.chunk_max_tokens_list == 768
+    assert settings.chunk_target_tokens_code == 768
+    assert settings.chunk_max_tokens_code == 1024
+    assert settings.chunk_target_tokens_equation == 256
+    assert settings.chunk_max_tokens_equation == 512
+    # D6：overlap 默认关
+    assert settings.chunk_overlap_ratio == 0.0
+
+
+def test_chunk_config_from_settings_maps_all_buckets(isolated_env):
+    """`chunk_config_from_settings` 把 Settings 组装为 `ChunkConfig`（design D5）。"""
+    from app.core.config import chunk_config_from_settings
+    from app.domain.chunking.models import ChunkConfig
+
+    settings = isolated_env(
+        CHUNK_TARGET_TOKENS_TEXT="600",
+        CHUNK_MAX_TOKENS_TEXT="900",
+        CHUNK_OVERLAP_RATIO="0.0",
+    )
+
+    cfg = chunk_config_from_settings(settings)
+
+    assert isinstance(cfg, ChunkConfig)
+    assert cfg.text_target_tokens == 600
+    assert cfg.text_max_tokens == 900
+    # 未覆盖的档位沿用默认值
+    assert cfg.table_target_tokens == 1024
+    assert cfg.overlap_ratio == 0.0

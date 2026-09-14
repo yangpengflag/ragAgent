@@ -153,6 +153,109 @@ def test_upgrade_is_idempotent(prepared_test_database):
     assert _version_rows() == 1
 
 
+def test_chunks_table_and_status_enum(prepared_test_database):
+    """document-chunking 任务 1.1：upgrade 后 `chunks` 表与约束齐全，
+    `documents.status` 枚举允许 `CHUNKING`。"""
+    config = prepared_test_database
+    command.upgrade(config, "head")
+
+    engine = create_engine(build_database_url(test=True))
+    try:
+        with engine.connect() as connection:
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    text(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = :db AND table_name = 'chunks'"
+                    ),
+                    {"db": _test_database_name()},
+                )
+            }
+            assert "chunks" in tables
+
+            cols = {
+                row[0]
+                for row in connection.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema = :db AND table_name = 'chunks'"
+                    ),
+                    {"db": _test_database_name()},
+                )
+            }
+            required = {
+                "id", "kb_id", "document_id", "parent_id", "content",
+                "section_path", "page_idx", "bbox", "block_type",
+                "is_recallable", "created_at", "updated_at", "deleted_at",
+            }
+            assert required.issubset(cols)
+
+            # 外键约束：kb_id→knowledge_bases / document_id→documents / parent_id→chunks 自关联
+            fk_map = {
+                row[0]: row[1]
+                for row in connection.execute(
+                    text(
+                        "SELECT column_name, referenced_table_name FROM "
+                        "information_schema.key_column_usage "
+                        "WHERE table_schema = :db AND table_name = 'chunks' "
+                        "AND referenced_table_name IS NOT NULL"
+                    ),
+                    {"db": _test_database_name()},
+                )
+            }
+            assert fk_map.get("kb_id") == "knowledge_bases"
+            assert fk_map.get("document_id") == "documents"
+            assert fk_map.get("parent_id") == "chunks"
+            assert len(fk_map) == 3
+
+            # documents.status 枚举允许 CHUNKING（native_enum=False：VARCHAR + CHECK 约束）
+            check_clause = connection.execute(
+                text(
+                    "SELECT cc.check_clause FROM information_schema.check_constraints cc "
+                    "JOIN information_schema.table_constraints tc "
+                    "ON cc.constraint_name = tc.constraint_name "
+                    "AND cc.constraint_schema = tc.constraint_schema "
+                    "WHERE tc.table_schema = :db AND tc.table_name = 'documents'"
+                ),
+                {"db": _test_database_name()},
+            ).scalars().all()
+            assert any("CHUNKING" in clause for clause in check_clause), (
+                "documents.status 的 CHECK 约束应包含 CHUNKING"
+            )
+    finally:
+        engine.dispose()
+
+
+def test_document_status_enum_allows_embedding_ready(prepared_test_database):
+    """document-embedding-index 任务 1.1：upgrade 后 `documents.status` 枚举
+    允许 `EMBEDDING` 与 `READY`（native_enum=False：VARCHAR + CHECK 约束）。"""
+    config = prepared_test_database
+    command.upgrade(config, "head")
+
+    engine = create_engine(build_database_url(test=True))
+    try:
+        with engine.connect() as connection:
+            clauses = connection.execute(
+                text(
+                    "SELECT cc.check_clause FROM information_schema.check_constraints cc "
+                    "JOIN information_schema.table_constraints tc "
+                    "ON cc.constraint_name = tc.constraint_name "
+                    "AND cc.constraint_schema = tc.constraint_schema "
+                    "WHERE tc.table_schema = :db AND tc.table_name = 'documents'"
+                ),
+                {"db": _test_database_name()},
+            ).scalars().all()
+        assert any("EMBEDDING" in clause for clause in clauses), (
+            "documents.status 的 CHECK 约束应包含 EMBEDDING"
+        )
+        assert any("READY" in clause for clause in clauses), (
+            "documents.status 的 CHECK 约束应包含 READY"
+        )
+    finally:
+        engine.dispose()
+
+
 def test_downgrade_to_base_clears_version(prepared_test_database):
     config = prepared_test_database
 

@@ -39,9 +39,17 @@ def get_session_factory() -> sessionmaker[Session]:
 
 
 def get_db() -> Iterator[Session]:
-    """FastAPI 依赖：每请求一个会话，请求结束（含异常）必关闭。"""
+    """FastAPI 依赖：每请求一个会话，成功时提交、异常时回滚、结束必关闭。
+
+    服务层写操作只 `flush()` 取 ID / 触发完整性校验，事务在此统一提交——
+    既满足"写入在单次请求内原子持久化"，也避免各写路由各自 commit 导致遗漏。
+    """
     session = get_session_factory()()
     try:
         yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
     finally:
         session.close()

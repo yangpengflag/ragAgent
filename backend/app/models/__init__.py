@@ -6,6 +6,9 @@
 from __future__ import annotations
 
 from app.models.base import Base, BaseModel
+from app.models.chunk import Chunk
+from app.models.document import Document, DocumentStatus
+from app.models.ingest_job import IngestJob, IngestJobStatus
 from app.models.knowledge_base import KnowledgeBase
 from app.models.user import Account, SystemRole
 from app.models.user_kb_grant import KbRole, UserKbGrant
@@ -14,6 +17,11 @@ __all__ = [
     "Account",
     "Base",
     "BaseModel",
+    "Chunk",
+    "Document",
+    "DocumentStatus",
+    "IngestJob",
+    "IngestJobStatus",
     "KbRole",
     "KnowledgeBase",
     "SystemRole",

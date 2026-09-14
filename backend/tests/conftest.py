@@ -25,6 +25,8 @@ _MANAGED_PREFIXES = (
     "CELERY_",
     "DASHSCOPE_",
     "MINERU_",
+    "STORAGE_",
+    "UPLOAD_",
     "LOG_",
     "HEALTH_",
     "JWT_",
@@ -32,6 +34,7 @@ _MANAGED_PREFIXES = (
     "RATE_LIMIT_",
     "BOOTSTRAP_",
     "LANGSMITH_",
+    "CHUNK_",
 )
 
 # 构造 Settings 所需的最小必填集（仅测试用，不连接真实服务）。

@@ -1,0 +1,8 @@
+[
+  {"type": "text", "text": "第一章 引言", "text_level": 1, "page_idx": 0, "bbox": [0, 0, 100, 20], "images": []},
+  {"type": "text", "text": "这是引言的第一段，介绍背景。", "text_level": 0, "page_idx": 0, "bbox": [0, 20, 100, 40], "images": []},
+  {"type": "text", "text": "第二段说明目标范围。", "text_level": 0, "page_idx": 1, "bbox": [0, 40, 100, 60], "images": []},
+  {"type": "list", "text": "要点一\n要点二", "text_level": 0, "page_idx": 1, "bbox": [0, 60, 100, 80], "images": []},
+  {"type": "code", "text": "def hello():\n    return 42", "text_level": 0, "page_idx": 2, "bbox": [0, 80, 100, 100], "images": []},
+  {"type": "equation", "text": "E = mc^2", "text_level": 0, "page_idx": 2, "bbox": [0, 100, 100, 120], "images": []}
+]

@@ -8,11 +8,15 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.exceptions import InvalidConfigurationError, MissingConfigurationError
+
+if TYPE_CHECKING:
+    from app.domain.chunking.models import ChunkConfig
 
 # backend/app/core/config.py → parents: [0]=core [1]=app [2]=backend [3]=仓库根
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -58,6 +62,8 @@ class Settings(BaseSettings):
     milvus_collection: str = "kb_chunks"
     # KB 级隔离的 partition key 字段名（与入库 schema 对齐，design D4）
     milvus_partition_key: str = "kb_id"
+    # 单次 Milvus 建表 / 删除操作超时（秒）；显式超时，禁无限等待（backend-conventions）
+    milvus_timeout_sec: float = 10.0
 
     # ---------------------------------------------------------------- DashScope（OpenAI 兼容模式）
     # 与 Milvus/Redis 不同：key 缺失不阻止应用启动（RAG 链路之外的端点照常服务），
@@ -85,6 +91,44 @@ class Settings(BaseSettings):
     # 本地 http 环境为 False；生产（https）必须置 True
     refresh_cookie_secure: bool = False
     refresh_cookie_samesite: str = "lax"
+
+    # ---------------------------------------------------------------- 文档上传 / 存储 / 解析
+    # env 名与 .env.example 既有约定对齐（STORAGE_LOCAL_ROOT / MINERU_API_* / MINERU_POLL_*）
+    storage_local_root: str = Field(default="storage", validation_alias="STORAGE_LOCAL_ROOT")
+    # 上传大小上限（MB）
+    upload_max_size_mb: int = 50
+    # MinerU 云 API v4；token 可留空（lazy fail-fast，与 DashScope 同款语义）
+    mineru_api_base: str = Field(default="https://mineru.net", validation_alias="MINERU_API_BASE")
+    mineru_api_token: str | None = Field(
+        default=None, repr=False, validation_alias="MINERU_API_TOKEN"
+    )
+    mineru_model_version: str = "vlm"
+    mineru_http_timeout_sec: float = Field(
+        default=60.0, validation_alias="MINERU_HTTP_TIMEOUT_SEC"
+    )
+    mineru_poll_interval_sec: float = Field(
+        default=5.0, validation_alias="MINERU_POLL_INTERVAL_SEC"
+    )
+    mineru_poll_timeout_sec: float = Field(
+        default=900.0, validation_alias="MINERU_POLL_TIMEOUT_SEC"
+    )
+
+    # ---------------------------------------------------------------- Celery（长任务 broker）
+    celery_broker_url: str = "redis://127.0.0.1:6379/1"
+
+    # ---------------------------------------------------------------- 切分阈值（可配，不硬编码）
+    chunk_target_tokens_text: int = 512
+    chunk_max_tokens_text: int = 768
+    chunk_target_tokens_list: int = 512
+    chunk_max_tokens_list: int = 768
+    chunk_target_tokens_table: int = 1024
+    chunk_max_tokens_table: int = 2048
+    chunk_target_tokens_code: int = 768
+    chunk_max_tokens_code: int = 1024
+    chunk_target_tokens_equation: int = 256
+    chunk_max_tokens_equation: int = 512
+    # D6：overlap 默认关（0 直通，不为开关铺全参数面）
+    chunk_overlap_ratio: float = 0.0
 
     # 登录失败限流（键 = 小写用户名 + 对端地址）
     rate_limit_login_max_failures: int = 5
@@ -117,6 +161,7 @@ class Settings(BaseSettings):
         "obs_api_key",
         "dashscope_api_key",
         "dashscope_rerank_model",
+        "mineru_api_token",
         mode="before",
     )
     @classmethod
@@ -188,3 +233,25 @@ def load_settings(_env_file: object = _UNSET) -> Settings:
 def get_settings() -> Settings:
     """进程内共享的 Settings 实例。"""
     return load_settings()
+
+
+def chunk_config_from_settings(settings: Settings) -> ChunkConfig:
+    """把 Settings 的 `CHUNK_*` 组装为 `domain/chunking` 的 `ChunkConfig`。
+
+    design D5：阈值可配、不硬编码；`domain` 层不 import Settings，由本函数承担装配。
+    """
+    from app.domain.chunking.models import ChunkConfig
+
+    return ChunkConfig(
+        text_target_tokens=settings.chunk_target_tokens_text,
+        text_max_tokens=settings.chunk_max_tokens_text,
+        list_target_tokens=settings.chunk_target_tokens_list,
+        list_max_tokens=settings.chunk_max_tokens_list,
+        table_target_tokens=settings.chunk_target_tokens_table,
+        table_max_tokens=settings.chunk_max_tokens_table,
+        code_target_tokens=settings.chunk_target_tokens_code,
+        code_max_tokens=settings.chunk_max_tokens_code,
+        equation_target_tokens=settings.chunk_target_tokens_equation,
+        equation_max_tokens=settings.chunk_max_tokens_equation,
+        overlap_ratio=settings.chunk_overlap_ratio,
+    )

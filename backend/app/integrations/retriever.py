@@ -6,8 +6,8 @@
 - 空授权集合短路返回空结果，不触碰向量库
 - 返回值统一转换为 `RetrievedChunk` 领域契约，LangChain 类型不出本模块
 
-COSINE 距离换算：Milvus 返回 distance（越小越相似），
-similarity = 1 - distance，与 RetrievedChunk.score 的 [-1, 1] 契约对齐。
+COSINE 分数换算：Milvus COSINE 索引直接返回余弦相似度（相同向量 = 1.0，
+越大越相似），score 即该距离本身，与 RetrievedChunk.score 的 [-1, 1] 契约对齐。
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def _to_retrieved_chunk(doc: Document, distance: float) -> RetrievedChunk:
             str(metadata["parent_id"]) if metadata.get("parent_id") is not None else None
         ),
         content=doc.page_content,
-        score=1.0 - float(distance),
+        score=float(distance),
         page_idx=(
             int(metadata["page_idx"]) if metadata.get("page_idx") is not None else None
         ),
