@@ -140,7 +140,8 @@ def resolve_parse(
     - 阶段提交：置 `PARSING` + job `RUNNING` 后**立即提交**，使并发只读查询能观测到
       进行中状态（spec：瞬态状态必须在长任务进入外部 I/O 之前对外可见）
     - 成功：产物先落盘拿到 `artifact_path`，再置 `PARSED`，job → `SUCCESS`
-    - 失败：文档与 job 均置 `FAILED` 并记错误信息（job 是状态真相）
+    - 失败：业务失败时文档与 job 均置 `FAILED` 并记错误信息（job 是状态真相）；
+      数据契约被破坏（缺 `raw_path` / 缺 job）时抛出并保持瞬态，以便修复后重放
     """
     if document.status not in (DocumentStatus.UPLOADED, DocumentStatus.PARSING):
         return

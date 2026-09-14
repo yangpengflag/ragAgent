@@ -51,7 +51,8 @@ def resolve_chunking(
       表示上次切分未完成，允许重放；其余状态或已切分短路（幂等）
     - 阶段提交：置 `CHUNKING` + job `RUNNING` 后**立即提交**，使进行中状态对外可见
     - 成功：chunks 一次落库，文档回 `PARSED`，job → `SUCCESS`（stage `CHUNK`）
-    - 失败：文档与 job 均置 `FAILED` 并记错误，不留半套 chunks
+    - 失败：业务失败时文档与 job 均置 `FAILED` 并记错误，不留半套 chunks；
+      数据契约被破坏（缺产物 / 缺 job）时抛出并保持瞬态，以便修复后重放
     """
     if document.status not in (DocumentStatus.PARSED, DocumentStatus.CHUNKING):
         return False

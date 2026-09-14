@@ -37,7 +37,7 @@
 
 ### Requirement: 文档解析状态机推进并由入库任务反映进度
 
-系统 SHALL 通过 Celery 任务驱动文档从上传直至具备可检索索引：`UPLOADED` 或 `PARSING` 之外的文档在解析入口 MUST 短路返回（幂等）。解析成功 SHALL 先落盘 `content_list.json`（`artifact_path`）再置 `PARSED`。随后入库任务 SHALL 对 `PARSED` 文档执行切分：切分期间状态为 `CHUNKING`（切分中瞬态），切分完成后 `Chunk` 落库且状态回 `PARSED`（索引原料就绪）。再后续向量化任务 SHALL 将已切分文档推进到 `EMBEDDING`（向量化中瞬态），成功后置 `READY`（已可检索）。任一阶段失败 SHALL 将文档置 `FAILED` 并记录错误信息。同一 `IngestJob` 状态与 `stage` MUST 是入库进度与阶段的真相来源。
+系统 SHALL 通过 Celery 任务驱动文档从上传直至具备可检索索引：`UPLOADED` 或 `PARSING` 之外的文档在解析入口 MUST 短路返回（幂等）。解析成功 SHALL 先落盘 `content_list.json`（`artifact_path`）再置 `PARSED`。随后入库任务 SHALL 对 `PARSED` 文档执行切分：切分期间状态为 `CHUNKING`（切分中瞬态），切分完成后 `Chunk` 落库且状态回 `PARSED`（索引原料就绪）。再后续向量化任务 SHALL 将已切分文档推进到 `EMBEDDING`（向量化中瞬态），成功后置 `READY`（已可检索）。任一阶段在业务处理中失败 SHALL 将文档置 `FAILED` 并记录错误信息；当失败源于数据契约被破坏（如缺失原始文件路径、缺失入库任务）时，系统 MAY 保持该文档的瞬态状态以便修复后重放，但 MUST 记录错误日志。同一 `IngestJob` 状态与 `stage` MUST 是入库进度与阶段的真相来源。
 
 解析启动时文档状态 MUST 被置为 `PARSING`（不得跳过该状态）。
 

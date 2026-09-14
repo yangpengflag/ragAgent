@@ -150,8 +150,11 @@ def _build_mineru() -> MineruClient:
 def document_parse(self, document_id: str) -> None:
     """解析一篇 `UPLOADED` / `PARSING` 文档并推进状态；解析成功后分派切分任务。
 
-    错误均已写入文档与 job，不重试。`IngestJob` 是入库进度的真相来源：
-    RESOLVE → `PARSED`（job stage `PARSE`）→ commit 后按状态分派 `document_chunk`。
+    业务失败（上游异常等）写入文档与 job 并置 `FAILED`，不重试；数据契约被破坏
+    （缺失原始文件路径 / 缺失 ingest_job）则抛出——此时文档保持瞬态、可修复后重放，
+    不被钉死为 `FAILED`（spec：documents「解析状态机推进」的失败语义）。
+    `IngestJob` 是入库进度的真相来源：RESOLVE → `PARSED`（job stage `PARSE`）
+    → commit 后按状态分派 `document_chunk`。
     """
     did = uuid.UUID(document_id)
     session = get_session_factory()()

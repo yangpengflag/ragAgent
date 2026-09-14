@@ -64,7 +64,8 @@ def resolve_indexing(
       表示上次向量化未完成，允许重放（写前先清同文档旧向量，收敛为只剩本批次）
     - 阶段提交：置 `EMBEDDING` + job `RUNNING` 后**立即提交**，使进行中状态对外可见
     - 成功：先显式建 collection、幂等清旧向量，再编码写 Milvus → `READY`
-    - 失败：文档与 job 均置 `FAILED` 并记错误，不留半套索引
+    - 失败：业务失败时文档与 job 均置 `FAILED` 并记错误，不留半套索引；
+      缺 job 等数据契约错误抛出并保持瞬态，以便修复后重放
     """
     if document.status not in (DocumentStatus.PARSED, DocumentStatus.EMBEDDING):
         return False
